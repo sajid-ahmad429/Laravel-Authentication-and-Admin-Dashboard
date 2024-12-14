@@ -59,7 +59,7 @@
                     </svg>
                 </span>
             </span>
-            <span class="app-brand-text demo menu-text fw-bold ms-2">Materialize</span>
+            <span class="app-brand-text demo menu-text fw-bold ms-2">Admin Dashboard</span>
         </a>
 
         <a href="javascript:void(0);" class="layout-menu-toggle menu-link text-large ms-auto">
@@ -79,7 +79,7 @@
     <ul class="menu-inner py-1">
         <!-- Dashboards -->
         <li class="menu-item {{ $activeMenu === 'dashboard' ? 'active' : '' }}">
-            <a href="javascript:void(0);" class="menu-link">
+            <a href="{{ url($redirectAction) }}" class="menu-link">
                 <div data-i18n="Dashboards">Dashboards</div>
             </a>
         </li>
