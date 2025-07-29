@@ -7,11 +7,13 @@ use App\Models\User;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
-
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class UserController extends Controller
 {
     protected $user;
+    
     public function __construct(User $user)
     {
         $this->users = $user;
@@ -27,13 +29,16 @@ class UserController extends Controller
 
         $data['activeMenu'] = "users";
         $data['assetsJs'] = array('app-user-list');
-        // Save the JSON data to a file
-        $this->saveDataToJsonFile();
-
+        
+        // Use cached counts for better performance
         $data['active'] = $this->users->activeCount();
         $data['inactive'] = $this->users->inactiveCount();
         $data['totalUsers'] = $this->users->getAllCount();
-        return view('masters.users.list',$data);
+        
+        // Save the JSON data to a file (optimized)
+        $this->saveDataToJsonFile();
+
+        return view('masters.users.list', $data);
     }
 
     public function store(Request $request)
@@ -42,8 +47,8 @@ class UserController extends Controller
             'status' => 0,
             'message' => 'Failed',
             'acftkn' => [
-                'acftkname' => csrf_token(), // Include the CSRF token
-                'acftknhs' => csrf_token() // Include the CSRF token
+                'acftkname' => csrf_token(),
+                'acftknhs' => csrf_token()
             ]
         ];
 
@@ -53,25 +58,27 @@ class UserController extends Controller
         // Define validation rules
         $rules = [
             'userFullname' => 'required|string|max:255|regex:/^[a-zA-Z\s\-]+$/',
-            'userEmail' => 'required|email' . ($isUpdating ? '' : '|unique:users,email'), // Unique email validation for new users
-            'userContact' => 'required|string|max:10' . ($isUpdating ? '' : '|unique:users,contact_no'), // Unique contact_no validation for new users
+            'userEmail' => 'required|email' . ($isUpdating ? '' : '|unique:users,email'),
+            'userContact' => 'required|string|max:10' . ($isUpdating ? '' : '|unique:users,contact_no'),
         ];
+
         // Validate the request
         $validator = Validator::make($request->all(), $rules);
         if ($validator->fails()) {
-            // Return JSON response with validation errors
             $responseData['validation'] = $validator->errors();
             $responseData['status'] = 2;
             $responseData['message'] = 'Failed To Add User. Please Check All Fields Are Filled Properly.';
             return response()->json($responseData);
         }
 
-        // Check for duplicate records
+        // Check for duplicate records with optimized queries
         if (!$isUpdating) {
-            // Check for duplicate email and contact number
-            $duplicateUser = User::where('email', $request->input('userEmail'))
-                                ->orWhere('contact_no', $request->input('userContact'))
-                                ->first();
+            // Single query to check for duplicates
+            $duplicateUser = User::where(function ($query) use ($request) {
+                $query->where('email', $request->input('userEmail'))
+                      ->orWhere('contact_no', $request->input('userContact'));
+            })->first(['email', 'contact_no']);
+
             if ($duplicateUser) {
                 $message = ($duplicateUser->email === $request->input('userEmail'))
                     ? 'Duplicate entry: Email Address Already Registered'
@@ -82,14 +89,14 @@ class UserController extends Controller
                 return response()->json($returnData);
             }
         } else {
-            // When updating, check for duplicates excluding the current user
+            // Optimized update duplicate check
             $userId = $request->input('user_id');
             $duplicateUser = User::where(function ($query) use ($request, $userId) {
                 $query->where('email', $request->input('userEmail'))
-                    ->orWhere('contact_no', $request->input('userContact'));
+                      ->orWhere('contact_no', $request->input('userContact'));
             })
-            ->where('id', '!=', $userId) // Exclude the current user
-            ->first();
+            ->where('id', '!=', $userId)
+            ->first(['email', 'contact_no']);
 
             if ($duplicateUser) {
                 $message = ($duplicateUser->email === $request->input('userEmail'))
@@ -102,12 +109,15 @@ class UserController extends Controller
             }
         }
 
+        // Use database transaction for data integrity
+        DB::beginTransaction();
+        
         try {
             // Prepare data array
             $data = [
                 'name' => $request->input('userFullname'),
                 'email' => $request->input('userEmail'),
-                'password' => bcrypt('Smart@#123'), // Hash the password
+                'password' => bcrypt('Smart@#123'),
                 'contact_no' => $request->input('userContact'),
                 'company_name' => $request->input('companyName'),
                 'country' => $request->input('country'),
@@ -116,22 +126,23 @@ class UserController extends Controller
             ];
 
             if ($isUpdating) {
-                // Update existing user
+                // Update existing user with optimized query
                 $user = User::find($request->input('user_id'));
                 if ($user) {
-                    $previousUpdateData = [];
-                    $select_array = array_keys($data);  // Get the keys of the data being updated
-                    $previousUpdateData = $this->users->select($select_array)->where('id', $userId)->first();
-                    if ($previousUpdateData) {
-                        $previousUpdateData = $previousUpdateData->toArray();  // Convert object to array
-                    }
+                    // Get previous data for activity tracking
+                    $select_array = array_keys($data);
+                    $previousUpdateData = $user->only($select_array);
+                    
                     $user->update($data);
                     track_activity($previousUpdateData, $this->users, $data, $userId, 'users', 1);
-                    // $this->saveDataToJsonFile(); // Save data to JSON file after updating
+                    
+                    DB::commit();
+                    
                     $returnData['status'] = 1;
                     $returnData['message'] = 'Record Details Updated Successfully';
                     return response()->json($returnData);
                 } else {
+                    DB::rollBack();
                     $returnData['status'] = 2;
                     $returnData['message'] = 'User not found';
                     return response()->json($returnData);
@@ -139,31 +150,29 @@ class UserController extends Controller
             } else {
                 // Create a new user
                 User::create($data);
-                // $this->saveDataToJsonFile(); // Save data to JSON file after creating
+                DB::commit();
+                
                 return response()->json([
                     'status' => 1,
                     'message' => 'Record Details Added Successfully'
-                ], 201); // Created
+                ], 201);
             }
         } catch (\Exception $e) {
-            // Log the exception message
+            DB::rollBack();
             \Log::error('Error creating or updating user: ' . $e->getMessage());
 
-            // Return JSON response with error message
             return response()->json([
                 'status' => 0,
                 'message' => 'An error occurred while processing the request. Please try again.'
-            ], 500); // Internal Server Error
+            ], 500);
         }
     }
 
-
     public function getData(Request $request)
     {
-        // Ensure this method is only accessible via AJAX if required
         if ($request->ajax()) {
-            // Fetch and format user data
-            $data = User::select('id', 'name', 'email', 'roles', 'contact_no', 'country', 'company_name', 'plan', 'status', 'activated')->get();
+            // Use optimized cached data retrieval
+            $data = User::getListData();
 
             $formattedData = $data->map(function ($user) {
                 return [
@@ -178,44 +187,46 @@ class UserController extends Controller
                 ];
             });
 
-            // Save the JSON data to a file
-            $this->saveDataToJsonFile();
-
-            // Return JSON response for DataTables or as needed
             return response()->json([
                 'data' => $formattedData
             ]);
         }
 
-        // Optionally handle non-AJAX requests or return an error
         return response()->json([
             'status' => 0,
             'message' => 'Invalid request'
-        ], 400); // Bad Request
+        ], 400);
     }
 
     private function saveDataToJsonFile()
     {
-        $data = User::select('id', 'name', 'email', 'roles', 'contact_no', 'country', 'company_name', 'plan', 'status', 'activated')->get();
+        // Use cached data to avoid redundant database queries
+        $cacheKey = 'user_json_data';
+        $jsonData = Cache::remember($cacheKey, 300, function () {
+            $data = User::getListData();
 
-        $formattedData = $data->map(function ($user) {
-            return [
-                'id' => $user->id,
-                'full_name' => ucwords($user->name),
-                'role' => ucwords($user->roles),
-                'email' => $user->email,
-                'current_plan' => ucwords($user->plan),
-                'country' => $user->country,
-                'status' => $user->status,
-                'activated' => $user->activated,
-            ];
+            $formattedData = $data->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'full_name' => ucwords($user->name),
+                    'role' => ucwords($user->roles),
+                    'email' => $user->email,
+                    'current_plan' => ucwords($user->plan),
+                    'country' => $user->country,
+                    'status' => $user->status,
+                    'activated' => $user->activated,
+                ];
+            });
+
+            return ['data' => $formattedData];
         });
 
-        $jsonData = ['data' => $formattedData];
         $jsonFilePath = public_path('assets/json/user-list.json');
 
-        // Save JSON data to file
-        File::put($jsonFilePath, json_encode($jsonData));
+        // Only write to file if data has changed
+        if (!File::exists($jsonFilePath) || File::get($jsonFilePath) !== json_encode($jsonData)) {
+            File::put($jsonFilePath, json_encode($jsonData));
+        }
     }
 
     public function getUserDetails(Request $request)
@@ -224,23 +235,25 @@ class UserController extends Controller
             'status' => 0,
             'message' => 'Failed',
             'acftkn' => [
-                'acftkname' => csrf_token(), // Include the CSRF token
-                'acftknhs' => csrf_token() // Include the CSRF token
+                'acftkname' => csrf_token(),
+                'acftknhs' => csrf_token()
             ]
         ];
-        // Check if the user is authenticated and has the correct role
+
         if ($request->has('id')) {
             $id = base64_decode($request->input('id'));
 
-            // Fetch data from the database
-            $usersData = User::where(['status' => 1,'id' => $id])->first();
+            // Use cache for frequently accessed user details
+            $cacheKey = "user_details_{$id}";
+            $usersData = Cache::remember($cacheKey, 300, function () use ($id) {
+                return User::where(['status' => 1, 'id' => $id])->first();
+            });
 
             if ($usersData) {
-                // Add the CSRF token to the response data
                 $responseData = $usersData->toArray();
                 $responseData['acftkn'] = [
-                    'acftkname' => csrf_token(), // Include the CSRF token
-                    'acftknhs' => csrf_token() // Include the CSRF token
+                    'acftkname' => csrf_token(),
+                    'acftknhs' => csrf_token()
                 ];
 
                 return response()->json($responseData);
@@ -255,6 +268,4 @@ class UserController extends Controller
             return response()->json($returnData);
         }
     }
-
-
 }
