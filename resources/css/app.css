@@ -1,3 +1,68 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Performance optimizations */
+@layer base {
+    /* Optimize font loading */
+    html {
+        font-display: swap;
+    }
+    
+    /* Reduce layout shifts */
+    img {
+        height: auto;
+        max-width: 100%;
+    }
+    
+    /* Optimize scrolling performance */
+    * {
+        scroll-behavior: smooth;
+    }
+    
+    /* Will-change optimization for animations */
+    .animate-spin,
+    .animate-ping,
+    .animate-pulse,
+    .animate-bounce {
+        will-change: transform;
+    }
+}
+
+@layer components {
+    /* Component optimizations */
+    .btn-optimized {
+        @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background;
+        transform: translateZ(0); /* Hardware acceleration */
+    }
+    
+    .card-optimized {
+        @apply rounded-lg border bg-card text-card-foreground shadow-sm;
+        contain: layout style paint; /* CSS containment for performance */
+    }
+}
+
+@layer utilities {
+    /* Performance utility classes */
+    .gpu-accelerate {
+        transform: translateZ(0);
+        backface-visibility: hidden;
+        perspective: 1000px;
+    }
+    
+    .contain-strict {
+        contain: strict;
+    }
+    
+    .contain-layout {
+        contain: layout;
+    }
+    
+    .will-change-transform {
+        will-change: transform;
+    }
+    
+    .will-change-contents {
+        will-change: contents;
+    }
+}

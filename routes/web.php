@@ -64,49 +64,49 @@ Route::get('/send-reset-email', function () {
 // Route Group for Superadmin
 Route::group(['prefix' => 'superadmin'], function () {
     Route::get('/', [AuthController::class, 'countList'])->name('superadmin.dashboard');
-    Route::get('/users', [UserController::class, 'index'])->name('users.index');
-    Route::match(['get', 'post'], '/add-new-users', [UserController::class, 'store'])->name('users.store');
-    Route::post('/users/get-details', [UserController::class, 'getUserDetails'])->name('users.getDetails');
+    Route::get('/users', [UserController::class, 'index'])->name('superadmin.users.index');
+    Route::match(['get', 'post'], '/add-new-users', [UserController::class, 'store'])->name('superadmin.users.store');
+    Route::post('/users/get-details', [UserController::class, 'getUserDetails'])->name('superadmin.users.getDetails');
 });
 
 // Route Group for Admin
 Route::group(['prefix' => 'admin'], function () {
     Route::get('/', [AuthController::class, 'countList'])->name('admin.dashboard');
-    Route::get('/users', [UserController::class, 'index'])->name('users.index');
-    Route::match(['get', 'post'], '/add-new-users', [UserController::class, 'store'])->name('users.store');
-    Route::post('/users/get-details', [UserController::class, 'getUserDetails'])->name('users.getDetails');
+    Route::get('/users', [UserController::class, 'index'])->name('admin.users.index');
+    Route::match(['get', 'post'], '/add-new-users', [UserController::class, 'store'])->name('admin.users.store');
+    Route::post('/users/get-details', [UserController::class, 'getUserDetails'])->name('admin.users.getDetails');
 });
 
 // Route Group for Author
 Route::group(['prefix' => 'author'], function () {
     Route::get('/', [AuthController::class, 'countList'])->name('author.dashboard');
-    Route::get('/users', [UserController::class, 'index'])->name('users.index');
-    Route::match(['get', 'post'], '/add-new-users', [UserController::class, 'store'])->name('users.store');
-    Route::post('/users/get-details', [UserController::class, 'getUserDetails'])->name('users.getDetails');
+    Route::get('/users', [UserController::class, 'index'])->name('author.users.index');
+    Route::match(['get', 'post'], '/add-new-users', [UserController::class, 'store'])->name('author.users.store');
+    Route::post('/users/get-details', [UserController::class, 'getUserDetails'])->name('author.users.getDetails');
 
 });
 
 // Route Group for Maintainer
 Route::group(['prefix' => 'maintainer'], function () {
     Route::get('/', [AuthController::class, 'countList'])->name('maintainer.dashboard');
-    Route::get('/users', [UserController::class, 'index'])->name('users.index');
-    Route::match(['get', 'post'], '/add-new-users', [UserController::class, 'store'])->name('users.store');
-    Route::post('/users/get-details', [UserController::class, 'getUserDetails'])->name('users.getDetails');
+    Route::get('/users', [UserController::class, 'index'])->name('maintainer.users.index');
+    Route::match(['get', 'post'], '/add-new-users', [UserController::class, 'store'])->name('maintainer.users.store');
+    Route::post('/users/get-details', [UserController::class, 'getUserDetails'])->name('maintainer.users.getDetails');
 });
 
 // Route Group for Editor
 Route::group(['prefix' => 'editor'], function () {
     Route::get('/', [AuthController::class, 'countList'])->name('editor.dashboard');
-    Route::get('/users', [UserController::class, 'index'])->name('users.index');
-    Route::match(['get', 'post'], '/add-new-users', [UserController::class, 'store'])->name('users.store');
-    Route::post('/users/get-details', [UserController::class, 'getUserDetails'])->name('users.getDetails');
+    Route::get('/users', [UserController::class, 'index'])->name('editor.users.index');
+    Route::match(['get', 'post'], '/add-new-users', [UserController::class, 'store'])->name('editor.users.store');
+    Route::post('/users/get-details', [UserController::class, 'getUserDetails'])->name('editor.users.getDetails');
 });
 
 // Route Group for Subscriber
 Route::group(['prefix' => 'subscriber'], function () {
     Route::get('/', [AuthController::class, 'countList'])->name('subscriber.dashboard');
-    Route::get('/users', [UserController::class, 'index'])->name('users.index');
-    Route::match(['get', 'post'], '/add-new-users', [UserController::class, 'store'])->name('users.store');
-    Route::post('/users/get-details', [UserController::class, 'getUserDetails'])->name('users.getDetails');
+    Route::get('/users', [UserController::class, 'index'])->name('subscriber.users.index');
+    Route::match(['get', 'post'], '/add-new-users', [UserController::class, 'store'])->name('subscriber.users.store');
+    Route::post('/users/get-details', [UserController::class, 'getUserDetails'])->name('subscriber.users.getDetails');
 });
 

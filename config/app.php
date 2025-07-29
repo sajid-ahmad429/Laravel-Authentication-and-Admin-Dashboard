@@ -123,4 +123,22 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Performance Optimizations
+    |--------------------------------------------------------------------------
+    |
+    | These settings help optimize application performance.
+    |
+    */
+
+    'performance' => [
+        'cache_routes' => env('CACHE_ROUTES', true),
+        'cache_config' => env('CACHE_CONFIG', true),
+        'cache_views' => env('CACHE_VIEWS', true),
+        'opcache_enabled' => env('PHP_OPCACHE_ENABLE', true),
+        'query_log' => env('DB_QUERY_LOG', false),
+        'debug_bar' => env('DEBUGBAR_ENABLED', false),
+    ],
+
 ];
