@@ -53,6 +53,9 @@ class AuthController extends Controller
     public function login(Request $request) {
         $viewData['config'] = config('auth');  // Get configuration for the auth
         $viewData['errorMessage'] = '';
+        
+        // Ensure all required view variables are set
+        $viewData['errors'] = session('errors') ?: new \Illuminate\Support\ViewErrorBag();
 
         // Check if cookie is set
         // $this->authLibrary->checkCookie();
