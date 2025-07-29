@@ -23,9 +23,9 @@ $(function () {
     select2 = $('.select2'),
     userView = 'app-user-view-account.html',
     statusObj = {
-      1: { title: 'Pending', class: 'bg-label-warning' },
-      2: { title: 'Active', class: 'bg-label-success' },
-      3: { title: 'Inactive', class: 'bg-label-secondary' }
+      2: { title: 'Deleted', class: 'bg-label-warning' },
+      1: { title: 'Active', class: 'bg-label-success' },
+      0: { title: 'Inactive', class: 'bg-label-secondary' }
     };
 
   if (select2.length) {
@@ -139,7 +139,7 @@ $(function () {
           targets: 4,
           render: function (data, type, full, meta) {
             var $plan = full['current_plan'];
-
+            console.log($plan);
             return '<span class="text-heading">' + $plan + '</span>';
           }
         },
@@ -545,13 +545,18 @@ $(function () {
                 column.search(val ? '^' + val + '$' : '', true, false).draw();
               });
 
-            column
+              column
               .data()
               .unique()
               .sort()
               .each(function (d, j) {
-                select.append('<option value="' + d + '">' + d + '</option>');
+                d = String(d).trim(); // Ensure no extra spaces
+                if (d !== "") { // Only add non-empty values
+                  console.log("Plan Found:", d); // Debugging output
+                  select.append('<option value="' + d + '">' + d + '</option>');
+                }
               });
+
           });
         // Adding status filter once table initialized
         this.api()

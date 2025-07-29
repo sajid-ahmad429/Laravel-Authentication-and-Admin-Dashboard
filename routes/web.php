@@ -4,10 +4,12 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\CommonController;
+use App\Http\Controllers\WelcomeEmailController;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\ResetPasswordMail;
+use App\Mail\WelcomeMail;
 
-
+Route::match(['get', 'post'], 'send-email', [WelcomeEmailController::class, 'sendEmail'])->name('send-email');
 
 // Redirect root URL (/) to the index method of the Auth controller
 Route::get('/', [App\Http\Controllers\AuthController::class, 'index']);
