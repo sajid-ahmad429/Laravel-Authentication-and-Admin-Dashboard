@@ -12,17 +12,36 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('auth_logins', function (Blueprint $table) {
-            $table->id(); // UNSIGNED BIGINT with auto-increment
-            $table->unsignedBigInteger('user_id'); // UNSIGNED BIGINT for user ID
-            $table->string('name', 255); // VARCHAR for name
-            $table->string('role', 255); // VARCHAR for role
-            $table->string('ip_address', 45); // VARCHAR for IP address
-            $table->timestamp('date')->useCurrent(); // TIMESTAMP with default CURRENT_TIMESTAMP
-            $table->boolean('successful'); // TINYINT(1) for success (true/false)
-            $table->timestamps(); // Includes `created_at` and `updated_at`
+            $table->id();
+            
+            // User Relationship (Nullable because failed attempts might not match an existing user ID, or user could be deleted)
+            $table->foreignId('user_id')
+                  ->nullable()
+                  ->constrained('users')
+                  ->nullOnDelete();
+                  
+            // Snapshot of user details at the time of login (helpful if user is deleted later)
+            $table->string('name', 150)->nullable();
+            $table->string('email', 150)->index()->nullable(); // Useful for tracking brute-force attempts on specific emails
+            $table->string('role', 50)->nullable()->index();
+            
+            // Network & Geolocation Security
+            $table->string('ip_address', 45)->nullable()->index(); // IPv4 & IPv6 support
+            $table->text('user_agent')->nullable(); // Browser & Platform details
+            $table->string('device_type', 50)->nullable(); // Mobile, Desktop, Tablet
+            
+            // Login Status & Diagnostics
+            $table->boolean('successful')->default(false)->index(); // true: Success, false: Failed attempt
+            $table->string('failure_reason', 150)->nullable(); // e.g., 'Invalid Password', 'Account Deactivated', 'Blocked'
+            
+            // Timestamps
+            $table->timestamp('logged_in_at')->useCurrent()->index();
+            $table->timestamps();
 
-            // Foreign key constraint (optional, adjust if `users` table exists)
-            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+            // High-Performance Composite Indexes for Security & Login History Dashboards
+            $table->index(['user_id', 'logged_in_at'], 'idx_auth_user_time');
+            $table->index(['successful', 'logged_in_at'], 'idx_auth_success_time');
+            $table->index(['ip_address', 'logged_in_at'], 'idx_auth_ip_time');
         });
     }
 

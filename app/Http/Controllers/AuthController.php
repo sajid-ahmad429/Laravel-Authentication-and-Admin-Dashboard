@@ -4,102 +4,99 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\User;
-use Config\auth;
 use App\Models\AuthModel;
 use App\Libraries\AuthLibrary;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Redirect;
-use App\Rules\ValidateUser;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
-use Validator;
+use Illuminate\Support\Facades\Log;
+use App\Rules\ValidateUser;
 use App\Jobs\SendActivationEmailJob;
 
 class AuthController extends Controller
 {
-
     protected $usersModel;
-    protected $AuthModel;
-    protected $Auth;
+    protected $authModel;
+    protected $session;
+    protected $authLibrary;
     protected $config;
 
-    public function __construct(){
+    public function __construct()
+    {
         $this->authModel = new AuthModel();
         $this->usersModel = new User();
         $this->session = session();
-        $this->authLibrary = new AuthLibrary;
+        $this->authLibrary = new AuthLibrary();
         $this->config = config('auth');
     }
 
     public function index()
     {
-        // Redirect to the named route
+        // Redirect to the named login route if defined, else URL path
         return redirect()->to('sysCtrlLogin');
     }
 
-    /*
-      |--------------------------------------------------------------------------
-      | USER LOGIN
-      |--------------------------------------------------------------------------
-      |
-      | Get post data from login.php view
-      | Set and Validate rules
-      | Pass over to Library LoginUser
-      | If successfull get user details from DB
-      | Set user session
-      | return true / false
-      |
-    */
+    /**
+     * Handle User Login Process (Production Grade)
+     */
+    public function login(Request $request)
+    {
+        try {
+            $viewData['config'] = $this->config;
+            $viewData['errorMessage'] = '';
 
-    public function login(Request $request) {
-        $viewData['config'] = config('auth');  // Get configuration for the auth
-        $viewData['errorMessage'] = '';
+            // 1. Check and process Remember Me cookie if present
+            $this->authLibrary->checkCookie();
 
-        // Check if cookie is set
-        // $this->authLibrary->checkCookie();
-
-        // Check if user is already logged in, redirect to appropriate page
-        if (Session::has('isLoggedIn')) {
-            return redirect()->to($this->authLibrary->autoRedirect());
-        }
-
-        // Handle POST request
-        if ($request->isMethod('post')) {
-            $rules = [
-                'email' => ['required', 'email', new ValidateUser],  // Using custom rule for email
-                'password' => ['required', 'string', new ValidateUser],  // Using custom rule for password
-            ];
-
-            // Validate the request
-            $validator = Validator::make($request->all(), $rules);
-
-            // Check if validation fails
-            if ($validator->fails()) {
-                $this->authLibrary->loginlogFail($request->input('email'));  // Log failed login attempt
-                return redirect()->back()->withErrors($validator)->withInput();  // Return with errors
+            // 2. Redirect if already authenticated based on role
+            if (Session::has('isLoggedIn')) {
+                return redirect()->to($this->authLibrary->autoRedirect());
             }
 
-            // Get email and remember me values from POST request
-            $email = $request->input('email');
-            $rememberMe = $request->has('rememberme');
+            // 3. Handle POST request
+            if ($request->isMethod('post')) {
+                $rules = [
+                    'email'    => ['required', 'email'],
+                    'password' => ['required', 'string'],
+                ];
 
-            // Check if user exists and is active
-            $user = User::where('email', $email)->first();
+                $validator = Validator::make($request->all(), $rules);
 
-            if (!$user || $user->status != 1) {
-                $viewData['errorMessage'] = 'Please Contact System Administrator';
-            } else {
-                // Attempt login via the AuthLibrary
-                $this->authLibrary->Loginuser($email, $rememberMe);
-
-                // Redirect based on the user's role
-                if (Session::has('role')) {
-                    return redirect()->to($this->authLibrary->autoRedirect());
+                if ($validator->fails()) {
+                    $this->authLibrary->loginlogFail($request->input('email', 'unknown'));
+                    return redirect()->back()->withErrors($validator)->withInput($request->except('password'));
                 }
-            }
-        }
 
-        // Return the login view
-        return view('admin.auth.login', $viewData);
+                $email = $request->input('email');
+                $password = $request->input('password');
+                $rememberMe = $request->has('rememberme');
+
+                // 4. Fetch user securely
+                $user = User::where('email', $email)->first();
+
+                // 5. Security check: Validate user existence, password match, and activation status
+                if (!$user || !Hash::check($password, $user->password) || $user->activated != 1) {
+                    $this->authLibrary->loginlogFail($email);
+
+                    return redirect()->back()
+                        ->withInput($request->except('password'))
+                        ->with('danger', __('auth.failed') ?: 'Invalid credentials or account not activated.');
+                }
+
+                // 6. Attempt login via AuthLibrary (Manages session and redirection)
+                return $this->authLibrary->Loginuser($email, $rememberMe);
+            }
+
+            // Return the secure login view
+            return view('admin.auth.login', $viewData);
+        } catch (\Exception $e) {
+            Log::error('Login Error: ' . $e->getMessage());
+
+            return redirect()->back()
+                ->withInput($request->except('password'))
+                ->with('danger', 'An unexpected error occurred. Please try again later.');
+        }
     }
 
     /*
@@ -164,7 +161,7 @@ class AuthController extends Controller
         return view('admin.auth.register');
     }
 
-     /*
+    /*
       |--------------------------------------------------------------------------
       | RESEND ACTIVATION EMAIL
       |--------------------------------------------------------------------------
@@ -173,7 +170,8 @@ class AuthController extends Controller
       |
      */
 
-    public function resendactivation($id) {
+    public function resendactivation($id)
+    {
 
         // PASS TO LIBRARY
         $this->authLibrary->ResendActivation($id);
@@ -190,7 +188,8 @@ class AuthController extends Controller
       |
      */
 
-    public function sendActivationLink($id) {
+    public function sendActivationLink($id)
+    {
         $decodedId = base64_decode($id);
         // // PASS TO LIBRARY
         $result = $this->authLibrary->ResendActivation($decodedId);
@@ -200,23 +199,7 @@ class AuthController extends Controller
             return false;
         }
     }
-
-    // public function sendActivationLink($id)
-    // {
-    //     $decodedId = base64_decode($id);
-
-    //     $user = AuthModel::find($decodedId);
-
-    //     if (!$user) {
-    //         return response()->json(['success' => false, 'message' => 'User not found']);
-    //     }
-    //     // Dispatch the job to send the activation email
-    //    SendActivationEmailJob::dispatch($user);
-
-
-    //     return response()->json(['success' => true, 'message' => 'Activation email sending initiated']);
-    // }
-
+    
     /*
       |--------------------------------------------------------------------------
       | ACTIVATE USER
@@ -226,7 +209,8 @@ class AuthController extends Controller
       |
     */
 
-    public function activateUser($id, $token) {
+    public function activateUser($id, $token)
+    {
         // PASS TO LIBRARY
         $this->authLibrary->activateuser($id, $token);
         return redirect()->to('/');
@@ -373,7 +357,8 @@ class AuthController extends Controller
       |
      */
 
-    public function logout() {
+    public function logout()
+    {
         $this->authLibrary->logout();
         return redirect()->to('/');
     }

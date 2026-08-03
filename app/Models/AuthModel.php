@@ -33,7 +33,7 @@ class AuthModel extends Model
         'activate_token'
     ];
 
-    // Define methods for password hashing before insert and update.
+    // Password hashing on create & update
     public static function boot()
     {
         parent::boot();
@@ -49,20 +49,13 @@ class AuthModel extends Model
         });
     }
 
-     /**
-     * passwordHash
-     *
-     * @param  mixed $data
-     * @return void
-     */
     protected function passwordHash($password)
     {
         if (!Hash::needsRehash($password)) {
-            return $password; // Return the already hashed password
+            return $password;
         }
-        return Hash::make($password); // Hash if it's not hashed yet
+        return Hash::make($password);
     }
-
 
     // Verify user login credentials
     public static function verifyUser($email, $password, $roles)
@@ -72,7 +65,7 @@ class AuthModel extends Model
                     ->first();
 
         if ($user) {
-            if ($user->status != 1) {
+            if ($user->activated != 1) {
                 return 2; // Account not activated
             }
 
@@ -86,10 +79,23 @@ class AuthModel extends Model
         return 0; // User not found
     }
 
-    // Save user login session
-    public function logLogin($data)
+    // Save user login session (Synced with advanced migration)
+    public static function logLogin(array $data)
     {
-        DB::table('auth_logins')->insert($data);
+        return DB::table('auth_logins')->insert([
+            'user_id'        => $data['user_id'] ?? null,
+            'name'           => $data['name'] ?? null,
+            'email'          => $data['email'] ?? null,
+            'role'           => $data['role'] ?? null,
+            'ip_address'     => $data['ip_address'] ?? request()->ip(),
+            'user_agent'     => $data['user_agent'] ?? request()->userAgent(),
+            'device_type'    => $data['device_type'] ?? 'Desktop',
+            'successful'     => $data['successful'] ?? false,
+            'failure_reason' => $data['failure_reason'] ?? null,
+            'logged_in_at'   => $data['logged_in_at'] ?? now(),
+            'created_at'     => now(),
+            'updated_at'     => now(),
+        ]);
     }
 
     // Get Auth Token by User ID
@@ -98,16 +104,31 @@ class AuthModel extends Model
         return DB::table('auth_tokens')->where('user_id', $userID)->first();
     }
 
-    // Insert Auth Token
-    public static function insertToken($data)
+    // Insert Auth Token (Accepts array to match Library call)
+    public static function insertToken(array $data)
     {
-        return DB::table('auth_tokens')->insert($data);
+        return DB::table('auth_tokens')->insert([
+            'user_id'         => $data['user_id'] ?? null,
+            'selector'        => $data['selector'] ?? null,
+            'hashedvalidator' => $data['hashedvalidator'] ?? null,
+            'token_type'      => $data['token_type'] ?? 'remember_me',
+            'expires_at'      => $data['expires_at'] ?? null,
+            'created_at'      => now(),
+            'updated_at'      => now(),
+        ]);
     }
 
-    // Update Auth Token
-    public static function updateToken($data)
+    // Update Auth Token by User ID (Fixed to target specific user)
+    public static function updateToken(array $data)
     {
-        return DB::table('auth_tokens')->update($data);
+        return DB::table('auth_tokens')
+            ->where('user_id', $data['user_id'])
+            ->update([
+                'selector'        => $data['selector'],
+                'hashedvalidator' => $data['hashedvalidator'],
+                'expires_at'      => $data['expires_at'],
+                'updated_at'      => now(),
+            ]);
     }
 
     // Get Auth Token by Selector
@@ -122,17 +143,10 @@ class AuthModel extends Model
         return DB::table('auth_tokens')->where('user_id', $userID)->delete();
     }
 
-    // Update Selector
-    public static function updateSelector($data, $selector)
-    {
-        return DB::table('auth_tokens')->where('selector', $selector)->update($data);
-    }
-
     // Verify email existence
     public static function verifyEmail($email)
     {
         $user = self::where('email', $email)->first();
-
         return $user ? $user : false;
     }
 

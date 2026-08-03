@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -39,8 +38,6 @@ class User extends Authenticatable
         'remember_token',
         'status',
         'trash',
-        'created_at',
-        'updated_at',
     ];
 
     /**
@@ -106,9 +103,9 @@ class User extends Authenticatable
     }
 
     /**
-     * Optimized method using scopes and caching
+     * Optimized method using scopes and caching (Converted to Static)
      */
-    public function getAllCount()
+    public static function getAllCount()
     {
         return cache()->remember('users_all_count', 300, function () {
             return self::valid()->count();
@@ -116,9 +113,9 @@ class User extends Authenticatable
     }
 
     /**
-     * Optimized method using scopes and caching
+     * Optimized method using scopes and caching (Converted to Static)
      */
-    public function inactiveCount()
+    public static function inactiveCount()
     {
         return cache()->remember('users_inactive_count', 300, function () {
             return self::inactive()->count();
@@ -126,9 +123,9 @@ class User extends Authenticatable
     }
 
     /**
-     * Optimized method using scopes and caching
+     * Optimized method using scopes and caching (Converted to Static)
      */
-    public function activeCount()
+    public static function activeCount()
     {
         return cache()->remember('users_active_count', 300, function () {
             return self::active()->count();
