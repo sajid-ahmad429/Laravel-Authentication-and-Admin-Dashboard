@@ -43,11 +43,11 @@ foreach ($roles as $role) {
         Route::get('/', [AuthController::class, 'countList'])->name('dashboard');
         Route::get('/users', [UserController::class, 'index'])->name('users.index');
         
-        // DataTables AJAX Server-Side Route Added Here 👇
-        Route::match(['get', 'post'], '/users/get-table-data', [UserController::class, 'getTableData'])->name('users.getTableData');
-        
-        Route::match(['get', 'post'], '/add-new-users', [UserController::class, 'store'])->name('users.store');
-        Route::post('/users/get-details', [UserController::class, 'getUserDetails'])->name('users.getDetails');
+        // Production-Optimized & Clean Named Routes
+        Route::match(['get', 'post'], '/users/registry-data', [UserController::class, 'getTableData'])->name('users.data');
+        Route::match(['get', 'post'], '/users/persistence-store', [UserController::class, 'store'])->name('users.store');
+        Route::post('/users/profile-details', [UserController::class, 'getUserDetails'])->name('users.details');
+        Route::post('/users/trash-toggle', [UserController::class, 'toggleTrash'])->name('users.toggleTrash');
     });
 }
 

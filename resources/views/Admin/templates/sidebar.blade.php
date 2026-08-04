@@ -84,19 +84,19 @@
             </a>
         </li>
 
-        <li class="menu-item">
-            <a href="javascript:void(0);" class="menu-link menu-toggle">
-                <i class="menu-icon tf-icons mdi mdi-account-outline"></i>
-                <div data-i18n="Users">Users</div>
+       <li class="menu-item {{ $activeMenu === 'users' ? 'active open' : '' }}">
+    <a href="javascript:void(0);" class="menu-link menu-toggle">
+        <i class="menu-icon tf-icons mdi mdi-account-outline"></i>
+        <div data-i18n="Users">Users</div>
+    </a>
+    <ul class="menu-sub">
+        <li class="menu-item {{ $activeMenu === 'users' ? 'active' : '' }}">
+            <a href="{{ url($redirectAction . '/users') }}" class="menu-link">
+                <div data-i18n="List">List</div>
             </a>
-            <ul class="menu-sub">
-                <li class="menu-item {{ $activeMenu === 'users' ? 'active open' : '' }}">
-                    <a href="{{ url($redirectAction . '/users') }}" class="menu-link">
-                        <div data-i18n="List">List</div>
-                    </a>
-                </li>
-            </ul>
         </li>
+    </ul>
+</li>
     </ul>
 </aside>
 <!-- / Menu -->

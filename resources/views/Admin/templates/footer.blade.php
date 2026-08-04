@@ -61,13 +61,34 @@
 
 <!-- Vendors JS -->
 <script src="../../assets/vendor/libs/moment/moment.js"></script>
-<script src="../../assets/vendor/libs/datatables-bs5/datatables-bootstrap5.js"></script>
+{{-- <script src="../../assets/vendor/libs/datatables-bs5/datatables-bootstrap5.js"></script> --}}
 <script src="../../assets/vendor/libs/select2/select2.js"></script>
 <script src="../../assets/vendor/libs/@form-validation/umd/bundle/popular.min.js"></script>
 <script src="../../assets/vendor/libs/@form-validation/umd/plugin-bootstrap5/index.min.js"></script>
 <script src="../../assets/vendor/libs/@form-validation/umd/plugin-auto-focus/index.min.js"></script>
 <script src="../../assets/vendor/libs/cleavejs/cleave.js"></script>
 <script src="../../assets/vendor/libs/cleavejs/cleave-phone.js"></script>
+
+{{-- <script src="{{ asset('admin/assets/libs/datatables.net/js/jquery.dataTables.min.js') }}"></script>
+<script src="{{ asset('admin/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js') }}"></script> --}}
+
+<!-- Responsive Examples -->
+{{-- <script src="{{ asset('admin/assets/libs/datatables.net-responsive/js/dataTables.responsive.min.js') }}"></script>
+<script src="{{ asset('admin/assets/libs/datatables.net-responsive-bs4/js/responsive.bootstrap4.min.js') }}"></script> --}}
+
+<!-- Buttons Examples -->
+{{-- <script src="{{ asset('admin/assets/libs/datatables.net-buttons/js/dataTables.buttons.min.js') }}"></script>
+<script src="{{ asset('admin/assets/libs/datatables.net-buttons-bs4/js/buttons.bootstrap4.min.js') }}"></script>
+<script src="{{ asset('admin/assets/libs/jszip/jszip.min.js') }}"></script>
+<script src="{{ asset('admin/assets/libs/pdfmake/build/pdfmake.min.js') }}"></script>
+<script src="{{ asset('admin/assets/libs/pdfmake/build/vfs_fonts.js') }}"></script>
+<script src="{{ asset('admin/assets/libs/datatables.net-buttons/js/buttons.html5.min.js') }}"></script>
+<script src="{{ asset('admin/assets/libs/datatables.net-buttons/js/buttons.print.min.js') }}"></script>
+<script src="{{ asset('admin/assets/libs/datatables.net-buttons/js/buttons.colVis.min.js') }}"></script> --}}
+
+<!-- Extra Tables Plugins -->
+{{-- <script src="{{ asset('admin/assets/libs/datatables.net-keytable/js/dataTables.keyTable.min.js') }}"></script> --}}
+{{-- <script src="{{ asset('admin/assets/libs/datatables.net-select/js/dataTables.select.min.js') }}"></script> --}}
 
 
 <!-- Main JS -->
@@ -85,19 +106,165 @@
 <script>
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-    function updateStatus(id, status, name) {
+    // Parameter mein 'btnElement = null' add kiya hai taaki click ki hui row ka reference mil sake
+    // function updateStatus(id, status, name, tableName, btnElement = null) {
+    //     // 🛠️ FIX: Agar tableName encoded hai (jaise 'Mg==' ya kuch aur), toh usko decode karo
+    //     try {
+    //         let decoded = atob(tableName);
+    //         if (!isNaN(decoded) || decoded === 'users' || decoded === 'user') {
+    //             if (!isNaN(decoded)) {
+    //                 tableName = 'users';
+    //             } else {
+    //                 tableName = decoded;
+    //             }
+    //         }
+    //     } catch (e) {
+    //         // Fallback agar plain text ho
+    //     }
+        
+    //     let icon = 'info';
+    //     let title = 'Are you sure?';
+    //     let text = "Once deleted, you will not be able to recover!";
+    //     let confirmButtonText = 'Yes';
+    //     let successtitle = '';
+    //     let successttext = '';
+        
+    //     status = parseInt(status);
+        
+    //     switch (status) {
+    //         case 1:
+    //             icon = 'success';
+    //             title = 'Are you sure?';
+    //             text = "Activate The Record!";
+    //             confirmButtonText = 'Activate';
+    //             successtitle = 'Activated';
+    //             successttext = 'Record Activated Successfully....!';
+    //             break;
+    //         case 2:
+    //             icon = 'error';
+    //             title = 'Are you sure?';
+    //             text = "Permanently Remove Record...!";
+    //             confirmButtonText = 'Remove';
+    //             successtitle = 'Deleted';
+    //             successttext = 'Record Permanently Removed Successfully....!';
+    //             break;
+    //         default:
+    //             icon = 'warning';
+    //             title = 'Are you sure?';
+    //             text = "Deactivate The Record!";
+    //             confirmButtonText = 'Deactivate';
+    //             successtitle = 'Deactivated';
+    //             successttext = 'Record Deactivated Successfully....!';
+    //             break;
+    //     }
+
+    //     Swal.fire({
+    //         title: title,
+    //         text: text,
+    //         icon: icon,
+    //         showCancelButton: true,
+    //         confirmButtonText: confirmButtonText,
+    //         cancelButtonText: "No, cancel!",
+    //         confirmButtonClass: "btn btn-success mt-2",
+    //         cancelButtonClass: "btn btn-danger ms-2 mt-2",
+    //         buttonsStyling: false
+    //     }).then(function (t) {
+    //         if (t.value) {
+    //             $.ajax({
+    //                 headers: {
+    //                     'X-CSRF-TOKEN': csrfToken
+    //                 },
+    //                 url: "{{ route('status.change') }}",
+    //                 type: 'post',
+    //                 dataType: 'json',
+    //                 data: { id: id, status: status, name: name },
+    //                 success: function (result1) {
+    //                     if (result1.success == "1" || result1.success == 1 || result1.status == 1) {
+    //                         Swal.fire({
+    //                             title: successtitle,
+    //                             text: successttext,
+    //                             icon: "success",
+    //                             timer: 1500,
+    //                             showConfirmButton: false
+    //                         });
+
+    //                         setTimeout(function() {
+    //                             let tableSelector = '';
+    //                             switch (tableName) {
+    //                                 case 'users':
+    //                                     tableSelector = '#usersTable';
+    //                                     break;
+    //                                 default:
+    //                                     tableSelector = '#' + tableName + 'Table';
+    //                                     break;
+    //                             }
+
+    //                             if ($.fn.DataTable.isDataTable(tableSelector)) {
+    //                                 let table = $(tableSelector).DataTable();
+                                    
+    //                                 // 👉 Agar delete hai, toh row hataane ke sath ajax reload bhi karo taaki entries count update ho jaye
+    //                                 if (status === 2 && btnElement) {
+    //                                     table.row($(btnElement).closest('tr')).remove().draw(false);
+    //                                     // Entries count aur pagination ko sync karne ke liye background reload
+    //                                     table.ajax.reload(null, false);
+    //                                 } else {
+    //                                     table.ajax.reload(null, false);
+    //                                 }
+    //                             } else if ($.fn.DataTable.isDataTable('#usersTable')) {
+    //                                 $('#usersTable').DataTable().ajax.reload(null, false);
+    //                             } else {
+    //                                 location.reload();
+    //                             }
+    //                         }, 300);
+    //                     } else {
+    //                         Swal.fire("Error", "Something went wrong on the server!", "error");
+    //                     }
+    //                 },
+    //                 error: function(xhr) {
+    //                     console.log("AJAX Error:", xhr.responseText);
+    //                     Swal.fire("Error", "Could not process request.", "error");
+    //                 }
+    //             });
+    //         } else {
+    //             Swal.fire({
+    //                 title: "Cancelled",
+    //                 text: "Your record is safe :)",
+    //                 icon: "error"
+    //             });
+    //         }
+    //     });
+    // }
+
+    function updateStatus(id, status, name, tableName, btnElement = null) {
+        // 🛠️ FIX: Agar tableName encoded hai (jaise 'Mg==' ya kuch aur), toh usko decode karo
+        try {
+            let decoded = atob(tableName);
+            if (!isNaN(decoded) || decoded === 'users' || decoded === 'user') {
+                if (!isNaN(decoded)) {
+                    tableName = 'users';
+                } else {
+                    tableName = decoded;
+                }
+            }
+        } catch (e) {
+            // Fallback agar plain text ho
+        }
+
+        console.log("Final Table Name for Selector:", tableName);
+        console.log("Status:", status);
+        
         let icon = 'info';
-        let dangerMode = true;
         let title = 'Are you sure?';
         let text = "Once deleted, you will not be able to recover!";
         let confirmButtonText = 'Yes';
         let successtitle = '';
         let successttext = '';
+        
         status = parseInt(status);
+        
         switch (status) {
             case 1:
                 icon = 'success';
-                dangerMode = true;
                 title = 'Are you sure?';
                 text = "Activate The Record!";
                 confirmButtonText = 'Activate';
@@ -106,7 +273,6 @@
                 break;
             case 2:
                 icon = 'error';
-                dangerMode = true;
                 title = 'Are you sure?';
                 text = "Permanently Remove Record...!";
                 confirmButtonText = 'Remove';
@@ -115,7 +281,6 @@
                 break;
             default:
                 icon = 'warning';
-                dangerMode = true;
                 title = 'Are you sure?';
                 text = "Deactivate The Record!";
                 confirmButtonText = 'Deactivate';
@@ -123,6 +288,7 @@
                 successttext = 'Record Deactivated Successfully....!';
                 break;
         }
+
         Swal.fire({
             title: title,
             text: text,
@@ -137,24 +303,52 @@
             if (t.value) {
                 $.ajax({
                     headers: {
-                        'X-CSRF-TOKEN': csrfToken // Include CSRF token in the request headers
+                        'X-CSRF-TOKEN': csrfToken
                     },
                     url: "{{ route('status.change') }}",
                     type: 'post',
-                    datatype: 'json',
-                    async: false,
-                    data: { id: id, status: status, name: name }, // get all form variables
+                    dataType: 'json',
+                    data: { id: id, status: status, name: name },
                     success: function (result1) {
-                        if (result1.success == "1") {
+                        if (result1.success == "1" || result1.success == 1 || result1.status == 1) {
                             Swal.fire({
                                 title: successtitle,
                                 text: successttext,
-                                icon: "success"
+                                icon: "success",
+                                timer: 1500,
+                                showConfirmButton: false
                             });
-                            setTimeout(function () {
-                                location.reload();
-                            }, 3000);
+
+                            setTimeout(function() {
+                                let tableSelector = '';
+                                switch (tableName) {
+                                    case 'users':
+                                        tableSelector = '#usersTable';
+                                        break;
+                                    default:
+                                        tableSelector = '#' + tableName + 'Table';
+                                        break;
+                                }
+
+                                if ($.fn.DataTable.isDataTable(tableSelector)) {
+                                    let table = $(tableSelector).DataTable();
+                                    
+                                    // 👉 Yeh server se naya data fetch karke rows aur entries/pagination count dono ko update kar dega
+                                    table.ajax.reload(null, false);
+                                    
+                                } else if ($.fn.DataTable.isDataTable('#usersTable')) {
+                                    $('#usersTable').DataTable().ajax.reload(null, false);
+                                } else {
+                                    location.reload();
+                                }
+                            }, 300);
+                        } else {
+                            Swal.fire("Error", "Something went wrong on the server!", "error");
                         }
+                    },
+                    error: function(xhr) {
+                        console.log("AJAX Error:", xhr.responseText);
+                        Swal.fire("Error", "Could not process request.", "error");
                     }
                 });
             } else {
@@ -166,7 +360,7 @@
             }
         });
     }
-
+    
     function isNumberKey(evt, element) {
         var charCode = (evt.which) ? evt.which : event.keyCode;
         if (charCode > 31 && (charCode < 48 || charCode > 57) && !(charCode == 46 || charCode == 8)) {
@@ -230,7 +424,7 @@
                     async: false,
                     data: { value: value, }, // get all form variables
                     success: function (result1) {
-                    console.log(result1);
+                    console.log(table);
                         if (result1 == 1) {
                             // Success case
                             Swal.fire({
@@ -238,9 +432,7 @@
                                 text: 'Success Text',   // Replace with your success text
                                 icon: 'success'
                             });
-                            setTimeout(function () {
-                                location.reload();
-                            }, 3000);
+                            
                         } else {
                             // Error case
                             Swal.fire({
