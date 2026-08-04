@@ -5,9 +5,6 @@
     $roleName = !empty($role) && in_array($role, ['superadmin', 'admin']) ? $role : 'admin';
 @endphp
 
-<!-- DataTables & FormValidation Styles -->
-<link rel="stylesheet"
-    href="https://cdn.datatables.net/v/bs5/jszip-2.5.0/dt-1.13.4/b-2.3.6/b-colvis-2.3.6/b-html5-2.3.6/b-print-2.3.6/cr-1.6.2/fc-4.2.2/fh-3.3.2/r-2.4.1/sc-2.1.1/sp-2.1.2/sl-1.6.2/sr-1.2.2/datatables.min.css" />
 <!-- SweetAlert2 CSS -->
 <style>
     .dataTables_wrapper .dataTables_length select,
@@ -334,12 +331,6 @@
     @include('Admin.templates.footer')
 </div>
 
-<!-- Scripts Dependencies -->
-<script
-    src="https://cdn.datatables.net/v/bs5/jszip-2.5.0/dt-1.13.4/b-2.3.6/b-colvis-2.3.6/b-html5-2.3.6/b-print-2.3.6/cr-1.6.2/fc-4.2.2/fh-3.3.2/r-2.4.1/sc-2.1.1/sp-2.1.2/sl-1.6.2/sr-1.2.2/datatables.min.js">
-</script>
-<!-- Tailwind CSS CDN -->
-<script src="https://cdn.tailwindcss.com"></script>
 <script>
     $(document).ready(function() {
         $.ajaxSetup({
