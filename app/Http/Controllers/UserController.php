@@ -327,6 +327,10 @@ class UserController extends Controller
         Cache::forget('count_inactive');
         Cache::forget('count_total');
         Cache::forget('dt_total_base');
+        Cache::forget('users_all_count');
+        Cache::forget('users_inactive_count');
+        Cache::forget('users_active_count');
+        Cache::forget('users_list_data');
 
         if ($userId) {
             Cache::forget("user_details_{$userId}");
