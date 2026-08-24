@@ -374,22 +374,14 @@ class AuthLibrary
      */
     public function setUserSession($user)
     {
-        // Spatie DB tables se user ka actual Role Name fetch karte hain
-        $roleDetails = $this->getUserRoleDetails($user->id);
-
-        // Agar DB table mein nahi milta, toh column se fallback name lete hain
-        $roleName = $roleDetails['name'] ?? (is_string($user->roles) ? $user->roles : 'user');
-
         // Prepare user session data
         $data = [
-            'id'             => $user->id,
-            'name'           => $user->name,
-            'email'          => $user->email,
-            'role'           => $roleName,                // Ex: "admin", "author" (NOT ID)
-            'user_role_id'   => $roleDetails['id'],       // Role ID for reference if needed
-            'user_role_name' => $roleName,                // Extra session key for clear access
-            'isLoggedIn'     => true,
-            'ipaddress'      => request()->ip(),
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->roles,
+            'isLoggedIn' => true,
+            'ipaddress' => request()->ip(), // Get IP address
         ];
 
         // Store session data
