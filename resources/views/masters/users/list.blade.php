@@ -371,8 +371,8 @@
             order: [
                 [0, 'desc']
             ],
-            dom: '<"row mx-2"' +
-                '<"col-md-2"<"me-3"l>>' +
+            dom: '<"row align-items-center mx-2"' +
+                '<"col-md-2"l>' +
                 '<"col-md-10"<"dt-action-buttons text-xl-end text-lg-start text-md-end text-start d-flex align-items-center justify-content-end flex-md-row flex-column mb-3 mb-md-0 gap-3"fB>>' +
                 '>t' +
                 '<"row mx-2"' +
@@ -546,11 +546,12 @@
                     ]
                 },
                 {
-                    text: '<i class="mdi mdi-plus me-0 me-sm-1"></i><span class="d-none d-sm-inline-block">Add User</span>',
-                    className: 'add-new btn btn-primary',
+                    text: '<i class="mdi mdi-plus me-0 me-sm-1"></i><span class="d-none d-sm-inline-block">ADD USER</span>',
+                    className: 'add-new btn btn-primary rounded-3 shadow-sm',
                     attr: {
                         'data-bs-toggle': 'offcanvas',
-                        'data-bs-target': '#offcanvasAddUser'
+                        'data-bs-target': '#offcanvasAddUser',
+                        'id': 'openAddUserPanel'
                     }
                 }
             ]
