@@ -497,12 +497,16 @@ class AuthLibrary
      */
     public function setUserSession($user)
     {
+        // Resolve Spatie role name safely without triggering property shadow collision
+        $spatieRole = $user->roles()->pluck('name')->first();
+        $roleName = strtolower($spatieRole ?? 'admin');
+
         // Prepare user session data
         $data = [
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
-            'role' => $user->roles,
+            'role' => $roleName,
             'isLoggedIn' => true,
             'ipaddress' => request()->ip(), // Get IP address
         ];
