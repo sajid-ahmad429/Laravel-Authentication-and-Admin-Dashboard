@@ -88,14 +88,7 @@ class UserController extends Controller
                     return response()->json(['status' => 0, 'message' => 'Target user footprint not found.'], 442);
                 }
 
-                $select_array = array_keys($data);
-                $previousUpdateData = $user->only($select_array);
-
                 $user->update($data);
-
-                if (function_exists('track_activity')) {
-                    track_activity($previousUpdateData, $this->users, $data, $userId, 'users', 1);
-                }
 
                 DB::commit();
                 $this->clearUserCache($userId);
