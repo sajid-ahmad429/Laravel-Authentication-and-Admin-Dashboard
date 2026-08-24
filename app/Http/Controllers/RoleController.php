@@ -12,8 +12,10 @@ class RoleController extends Controller
 {
     public function index(): View
     {
+        $permissions = Permission::all();
         $activeMenu = 'roles';
-        return view('admin.roles.index', compact('activeMenu'));
+
+        return view('admin.roles.index', compact('permissions', 'activeMenu'));
     }
 
     public function getTableData(Request $request)
@@ -56,7 +58,7 @@ class RoleController extends Controller
                 </div>
             </div>';
 
-            $permissionsList = $role->permissions->pluck('name')->map(function($perm) {
+            $permissionsList = $role->permissions->pluck('name')->map(function ($perm) {
                 return '<span class="badge bg-label-primary m-1">' . e($perm) . '</span>';
             })->implode('');
 
@@ -80,6 +82,7 @@ class RoleController extends Controller
     {
         $permissions = Permission::all();
         $activeMenu = 'roles';
+
         return view('admin.roles.create', compact('permissions', 'activeMenu'));
     }
 
