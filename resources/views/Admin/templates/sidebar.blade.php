@@ -1,27 +1,13 @@
 <!-- Menu -->
 @php
-    $role = session('role'); // Fetch the role from the session
-    $redirectAction = '';
-
-    if (!empty($role)) { // Check if the role exists in the session
-        switch ($role) {
-            case 'superadmin':
-                $redirectAction = 'superadmin';
-                break;
-            case 'admin':
-                $redirectAction = 'admin';
-                break;
-            default:
-                $redirectAction = 'default'; // Add a default case if needed
-                break;
-        }
-    }
-
-    $activeMenu = (isset($activeMenu)) ? $activeMenu : '';
+    $role = session('role') ?? (auth()->check() ? auth()->user()->roles->first()?->name : 'superadmin');
+    $redirectAction = !empty($role) ? $role : 'superadmin';
+    $activeMenu = $activeMenu ?? '';
+    $user = auth()->user();
 @endphp
 <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
     <div class="app-brand demo">
-        <a href="index.html" class="app-brand-link">
+        <a href="{{ url($redirectAction) }}" class="app-brand-link">
             <span class="app-brand-logo demo">
                 <span style="color: var(--bs-primary)">
                     <svg width="268" height="150" viewBox="0 0 38 20" fill="none"
@@ -80,23 +66,99 @@
         <!-- Dashboards -->
         <li class="menu-item {{ $activeMenu === 'dashboard' ? 'active' : '' }}">
             <a href="{{ url($redirectAction) }}" class="menu-link">
+                <i class="menu-icon tf-icons mdi mdi-view-dashboard-outline"></i>
                 <div data-i18n="Dashboards">Dashboards</div>
             </a>
         </li>
 
-       <li class="menu-item {{ $activeMenu === 'users' ? 'active open' : '' }}">
-    <a href="javascript:void(0);" class="menu-link menu-toggle">
-        <i class="menu-icon tf-icons mdi mdi-account-outline"></i>
-        <div data-i18n="Users">Users</div>
-    </a>
-    <ul class="menu-sub">
-        <li class="menu-item {{ $activeMenu === 'users' ? 'active' : '' }}">
-            <a href="{{ url($redirectAction . '/users') }}" class="menu-link">
-                <div data-i18n="List">List</div>
+        <!-- Users Management -->
+        @if(!$user || $user->hasAnyRole(['superadmin', 'admin', 'editor']) || $user->can('view users'))
+        <li class="menu-item {{ in_array($activeMenu, ['users', 'users_list']) ? 'active open' : '' }}">
+            <a href="javascript:void(0);" class="menu-link menu-toggle">
+                <i class="menu-icon tf-icons mdi mdi-account-group-outline"></i>
+                <div data-i18n="Users">Users</div>
+            </a>
+            <ul class="menu-sub">
+                <li class="menu-item {{ $activeMenu === 'users' ? 'active' : '' }}">
+                    <a href="{{ url($redirectAction . '/users') }}" class="menu-link">
+                        <div data-i18n="List">List Users</div>
+                    </a>
+                </li>
+            </ul>
+        </li>
+        @endif
+
+        <!-- Access Control (Roles & Permissions) -->
+        @if(!$user || $user->hasAnyRole(['superadmin', 'admin']) || $user->can('manage roles'))
+        <li class="menu-item {{ in_array($activeMenu, ['roles', 'permissions']) ? 'active open' : '' }}">
+            <a href="javascript:void(0);" class="menu-link menu-toggle">
+                <i class="menu-icon tf-icons mdi mdi-shield-account-outline"></i>
+                <div data-i18n="Access Control">Access Control</div>
+            </a>
+            <ul class="menu-sub">
+                <li class="menu-item {{ $activeMenu === 'roles' ? 'active' : '' }}">
+                    <a href="{{ url($redirectAction . '/roles') }}" class="menu-link">
+                        <div data-i18n="Roles">Roles</div>
+                    </a>
+                </li>
+                <li class="menu-item {{ $activeMenu === 'permissions' ? 'active' : '' }}">
+                    <a href="{{ url($redirectAction . '/permissions') }}" class="menu-link">
+                        <div data-i18n="Permissions">Permissions</div>
+                    </a>
+                </li>
+            </ul>
+        </li>
+        @endif
+
+        <!-- Activity Logs -->
+        @if(!$user || $user->hasAnyRole(['superadmin', 'admin']))
+        <li class="menu-item {{ $activeMenu === 'activity_logs' ? 'active' : '' }}">
+            <a href="{{ url($redirectAction . '/activity-logs') }}" class="menu-link">
+                <i class="menu-icon tf-icons mdi mdi-history"></i>
+                <div data-i18n="Activity Logs">Activity Logs</div>
             </a>
         </li>
-    </ul>
-</li>
+        @endif
+
+        <!-- SaaS Tools -->
+        <li class="menu-item {{ in_array($activeMenu, ['plans', 'analytics']) ? 'active open' : '' }}">
+            <a href="javascript:void(0);" class="menu-link menu-toggle">
+                <i class="menu-icon tf-icons mdi mdi-chart-areaspline"></i>
+                <div data-i18n="SaaS Tools">SaaS Tools</div>
+            </a>
+            <ul class="menu-sub">
+                <li class="menu-item {{ $activeMenu === 'plans' ? 'active' : '' }}">
+                    <a href="{{ url($redirectAction . '/plans') }}" class="menu-link">
+                        <div data-i18n="Plans">Plans</div>
+                    </a>
+                </li>
+                <li class="menu-item {{ $activeMenu === 'analytics' ? 'active' : '' }}">
+                    <a href="{{ url($redirectAction . '/analytics') }}" class="menu-link">
+                        <div data-i18n="Analytics">Analytics</div>
+                    </a>
+                </li>
+            </ul>
+        </li>
+
+        <!-- System & Profile -->
+        <li class="menu-item {{ in_array($activeMenu, ['profile', 'health']) ? 'active open' : '' }}">
+            <a href="javascript:void(0);" class="menu-link menu-toggle">
+                <i class="menu-icon tf-icons mdi mdi-cog-outline"></i>
+                <div data-i18n="System">System</div>
+            </a>
+            <ul class="menu-sub">
+                <li class="menu-item {{ $activeMenu === 'profile' ? 'active' : '' }}">
+                    <a href="{{ url($redirectAction . '/profile') }}" class="menu-link">
+                        <div data-i18n="My Profile">My Profile</div>
+                    </a>
+                </li>
+                <li class="menu-item {{ $activeMenu === 'health' ? 'active' : '' }}">
+                    <a href="{{ url($redirectAction . '/health') }}" class="menu-link">
+                        <div data-i18n="System Health">System Health</div>
+                    </a>
+                </li>
+            </ul>
+        </li>
     </ul>
 </aside>
 <!-- / Menu -->

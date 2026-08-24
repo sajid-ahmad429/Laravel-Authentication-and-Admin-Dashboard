@@ -4,11 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-<<<<<<< HEAD
-    "content-hash": "626b9e7ddd47fb7eff9aaa53cce0c9ad",
-=======
-    "content-hash": "d6eda6ab322470129ba9f6f3884dc94d",
->>>>>>> 58e66f8 (Implement ImageService with Intervention Image v3, avatar upload, and WebP conversion)
+    
     "packages": [
         {
             "name": "brick/math",
