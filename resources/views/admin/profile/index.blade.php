@@ -15,8 +15,27 @@
             </div>
         @endif
 
-        <form action="{{ route('admin.profile.update') }}" method="POST">
+        <form action="{{ route('admin.profile.update') }}" method="POST" enctype="multipart/form-data">
             @csrf
+
+            <!-- Avatar Upload & Preview -->
+            <div class="flex items-center gap-6 mb-6">
+                <div class="relative w-24 h-24 rounded-full overflow-hidden border-2 border-slate-200 bg-slate-50">
+                    @if(!empty($user->avatar))
+                        <img src="{{ asset($user->avatar) }}" alt="Avatar" class="w-full h-full object-cover">
+                    @else
+                        <div class="w-full h-full flex items-center justify-center text-slate-400 font-bold text-2xl uppercase">
+                            {{ substr($user->name ?? 'U', 0, 2) }}
+                        </div>
+                    @endif
+                </div>
+                <div>
+                    <label class="block font-medium text-sm mb-1">Profile Photo</label>
+                    <input type="file" name="avatar" accept="image/jpeg,image/png,image/jpg,image/webp" class="text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                    <p class="text-xs text-slate-400 mt-1">Allowed: JPG, PNG, WEBP (Max 2MB). Auto-resized & converted to WebP.</p>
+                </div>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                     <label class="block font-medium mb-1 text-sm">Full Name</label>
