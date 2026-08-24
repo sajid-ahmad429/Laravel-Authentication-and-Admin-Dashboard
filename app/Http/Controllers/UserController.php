@@ -209,22 +209,32 @@ class UserController extends Controller
             $encodedId = base64_encode($user->id);
 
             if ($user->trash == 1) {
-                $actionButtons = '<button class="btn-restore px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition" data-id="' . $encodedId . '"> Restore Log </button>';
+                $actionButtons = '<button class="btn btn-sm btn-success btn-restore" data-id="' . $encodedId . '"> <i class="mdi mdi-restore me-1"></i> Restore </button>';
             } else {
-                $actionButtons = '<div class="inline-flex rounded-md shadow-sm">
-                <button class="edit-user-btn px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded-l-lg hover:bg-indigo-700 transition" data-id="' . $encodedId . '"> Edit </button>
-                <button class="btn-trash px-3 py-1.5 text-xs font-medium text-white bg-rose-600 rounded-r-lg hover:bg-rose-700 transition" data-id="' . $encodedId . '"> Trash </button>
-            </div>';
+                $actionButtons = '
+                <div class="dropdown">
+                    <button type="button" class="btn p-0 dropdown-toggle hide-arrow" data-bs-toggle="dropdown">
+                        <i class="mdi mdi-dots-vertical"></i>
+                    </button>
+                    <div class="dropdown-menu">
+                        <a class="dropdown-item edit-user-btn" href="javascript:void(0);" data-id="' . $encodedId . '"><i class="mdi mdi-pencil-outline me-1"></i> Edit</a>
+                        <a class="dropdown-item btn-trash text-danger" href="javascript:void(0);" data-id="' . $encodedId . '"><i class="mdi mdi-trash-can-outline me-1"></i> Trash</a>
+                    </div>
+                </div>';
             }
+
+            $statusBadge = $user->status == 1
+                ? '<span class="badge bg-label-success">ACTIVE</span>'
+                : '<span class="badge bg-label-secondary">INACTIVE</span>';
 
             $data[] = [
                 'id'           => $user->id,
                 'full_name'    => ucwords(e($user->name)),
                 'email'        => e($user->email),
-                'role'         => ucwords(e($user->roles)) ?: '-',
+                'role'         => '<span class="text-warning"><i class="mdi mdi-cog-outline me-1"></i>' . (ucwords(e($user->roles)) ?: '-') . '</span>',
                 'current_plan' => ucwords(e($user->plan)) ?: '-',
                 'country'      => e($user->country) ?: '-',
-                'status'       => $user->status,
+                'status'       => $statusBadge,
                 'actions'      => '<div class="text-center">' . $actionButtons . '</div>'
             ];
         }

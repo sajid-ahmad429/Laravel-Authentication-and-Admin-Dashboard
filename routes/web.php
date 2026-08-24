@@ -52,7 +52,9 @@ foreach ($roles as $role) {
         
         // Roles & Permissions Management Routes
         Route::resource('roles', RoleController::class)->only(['index', 'create', 'store', 'destroy']);
+        Route::post('/roles/data', [RoleController::class, 'getTableData'])->name('roles.data');
         Route::resource('permissions', PermissionController::class)->only(['index', 'store', 'destroy']);
+        Route::post('/permissions/data', [PermissionController::class, 'getTableData'])->name('permissions.data');
 
         // SaaS Platform Audit, Plans & Analytics Routes
         Route::get('/activity-logs', [ActivityLogController::class, 'index'])->name('activity_logs.index');
