@@ -15,14 +15,16 @@ class RoleMiddleware
      */
     public function handle(Request $request, Closure $next, $role): Response
     {
-        echo $role."Ok";
-        exit;
-        // Check if the user is logged in and has the required role
-        if (Auth::check() && Auth::user()->role == $role) {
+        // Check if the user is logged in via session or Auth
+        if (session()->has('isLoggedIn') && strtolower(session('role')) === strtolower($role)) {
+            return $next($request);
+        }
+
+        if (auth()->check() && (auth()->user()->hasRole($role) || auth()->user()->hasRole(strtolower($role)))) {
             return $next($request);
         }
 
         // Redirect unauthorized users
-        return redirect('/unauthorized'); // Define this route for unauthorized access
+        return redirect()->route('login')->with('danger', 'Unauthorized access.');
     }
 }
