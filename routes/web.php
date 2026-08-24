@@ -4,13 +4,6 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\CommonController;
-use App\Http\Controllers\RoleController;
-use App\Http\Controllers\PermissionController;
-use App\Http\Controllers\ActivityLogController;
-use App\Http\Controllers\PlanController;
-use App\Http\Controllers\AnalyticsController;
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\SystemHealthController;
 use App\Http\Controllers\WelcomeEmailController;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\ResetPasswordMail;
@@ -50,21 +43,6 @@ foreach ($roles as $role) {
         Route::get('/', [AuthController::class, 'countList'])->name('dashboard');
         Route::get('/users', [UserController::class, 'index'])->name('users.index');
         
-        // Roles & Permissions Management Routes
-        Route::resource('roles', RoleController::class)->names('admin.roles')->only(['index', 'create', 'store', 'destroy']);
-        Route::resource('permissions', PermissionController::class)->names('admin.permissions')->only(['index', 'store', 'destroy']);
-
-        // SaaS Platform Audit, Plans & Analytics Routes
-        Route::get('/activity-logs', [ActivityLogController::class, 'index'])->name('activity_logs.index');
-        Route::get('/activity-logs/data', [ActivityLogController::class, 'getLogsData'])->name('activity_logs.data');
-        Route::get('/plans', [PlanController::class, 'index'])->name('plans.index');
-        Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics.index');
-
-        // User Profile & System Health Routes
-        Route::get('/profile', [ProfileController::class, 'index'])->name('profile.index');
-        Route::post('/profile/update', [ProfileController::class, 'update'])->name('profile.update');
-        Route::get('/health', [SystemHealthController::class, 'index'])->name('health.index');
-
         // Production-Optimized & Clean Named Routes
         Route::match(['get', 'post'], '/users/registry-data', [UserController::class, 'getTableData'])->name('users.data');
         Route::match(['get', 'post'], '/users/persistence-store', [UserController::class, 'store'])->name('users.store');

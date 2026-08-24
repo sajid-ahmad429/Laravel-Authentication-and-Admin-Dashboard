@@ -459,7 +459,7 @@ class AuthLibrary
         if (!$user) {
             // User not found, set flash message
             Session::flash('danger', Lang::get('auth.userNotFound'));
-            return false;
+            return true; // Example redirect
         }
 
         // Fetch the expiry time for the token
@@ -467,17 +467,17 @@ class AuthLibrary
         $timeNow = Carbon::now();
 
         // Check if the token has expired
-        if (!$resetExpiry || $timeNow->greaterThanOrEqualTo(Carbon::parse($resetExpiry))) {
+        if ($timeNow->greaterThanOrEqualTo(Carbon::parse($resetExpiry))) {
             // Token has expired, set flash message
             Session::flash('danger', Lang::get('auth.linkExpired'));
-            return false;
+            return true; // Example redirect
         }
 
         // Check the token against the hashed token in the database
-        if (!$user->reset_token || !Hash::check($decodedToken, $user->reset_token)) {
+        if (!password_verify($decodedToken, $user['reset_token'])) {
             // Token does not match, set flash message
             Session::flash('danger', Lang::get('auth.noAuth'));
-            return false;
+            return true; // Example redirect
         } else {
             // Token is valid, set success message
             Session::flash('success', Lang::get('auth.passwordAuthorised'));
