@@ -20,7 +20,7 @@ class RoleMiddleware
             return $next($request);
         }
 
-        if (auth()->check() && strtolower(auth()->user()->roles) === strtolower($role)) {
+        if (auth()->check() && (auth()->user()->hasRole($role) || auth()->user()->hasRole(strtolower($role)))) {
             return $next($request);
         }
 

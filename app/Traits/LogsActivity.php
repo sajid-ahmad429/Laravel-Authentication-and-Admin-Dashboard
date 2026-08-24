@@ -40,7 +40,7 @@ trait LogsActivity
             $currentUser = Auth::user();
             $tableName = $this->getTable();
             $recordId = $this->getKey();
-            $userRole = session('role') ?? ($currentUser ? $currentUser->roles : 'System');
+            $userRole = session('role') ?? ($currentUser ? ($currentUser->getRoleNames()->first() ?? 'User') : 'System');
             $userName = session('name') ?? ($currentUser ? $currentUser->name : 'System');
             $ip = request()->ip();
 

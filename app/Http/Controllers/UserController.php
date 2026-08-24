@@ -71,13 +71,14 @@ class UserController extends Controller
 
         DB::beginTransaction();
         try {
+            $roleInput = $request->input('user-role');
+
             $data = [
                 'name'         => $request->input('userFullname'),
                 'email'        => $request->input('userEmail'),
                 'contact_no'   => $request->input('userContact'),
                 'company_name' => $request->input('companyName'),
                 'country'      => $request->input('country'),
-                'roles'        => $request->input('user-role'),
                 'plan'         => $request->input('user-plan'),
             ];
 
@@ -90,13 +91,21 @@ class UserController extends Controller
 
                 $user->update($data);
 
+                if (!empty($roleInput)) {
+                    $user->syncRoles([strtolower($roleInput)]);
+                }
+
                 DB::commit();
                 $this->clearUserCache($userId);
 
                 return response()->json(['status' => 1, 'message' => 'Record Details Updated Successfully']);
             } else {
                 $data['password'] = bcrypt('Smart@#123');
-                User::create($data);
+                $newUser = User::create($data);
+
+                if (!empty($roleInput)) {
+                    $newUser->syncRoles([strtolower($roleInput)]);
+                }
 
                 DB::commit();
                 $this->clearUserCache();
@@ -159,9 +168,10 @@ class UserController extends Controller
             $query->where('status', $request->input('status_filter'));
         }
 
-        // ⭐ STEP 1: Yeh aapka base screen total hai (Bina search keyword ke)
-        // Agar Trash filter active hai toh Trash ke saare records ka total batayega (e.g. 18)
-        $recordsTotal = $query->count();
+        // High-volume performance optimization: Cache total records count for 2 minutes to prevent heavy COUNT(*) queries
+        $recordsTotal = Cache::remember("dt_total_users_trash_{$trashFilter}_status_" . ($request->input('status_filter', 'all')), 120, function () use ($query) {
+            return (clone $query)->count();
+        });
 
         // 3. Ab global search keyword filter apply karein
         if (!empty($validated['search']['value'])) {
