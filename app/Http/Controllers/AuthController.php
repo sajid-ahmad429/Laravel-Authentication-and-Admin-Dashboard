@@ -268,10 +268,14 @@ class AuthController extends Controller
     public function resetPassword($id, $token)
     {
         // PASS TO LIBRARY
-        $id = $this->authLibrary->resetPassword($id, $token);
+        $userId = $this->authLibrary->resetPassword($id, $token);
+
+        if (!$userId) {
+            return redirect()->route('login');
+        }
 
         // Redirect to the updatePassword route
-        return redirect()->route('password.update', ['id' => $id]);
+        return redirect()->route('password.update', ['id' => $userId]);
     }
 
 
