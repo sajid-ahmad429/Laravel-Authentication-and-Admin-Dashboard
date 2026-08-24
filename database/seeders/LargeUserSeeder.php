@@ -20,19 +20,35 @@ class LargeUserSeeder extends Seeder
         $hashedPassword = Hash::make('password123');
         $rolesList = ['author', 'maintainer', 'editor', 'subscriber'];
         $plansList = ['Basic', 'Professional', 'Enterprise'];
-        $countries = ['United States', 'United Kingdom', 'Canada', 'Australia', 'India', 'Germany', 'France'];
+        $countries = ['India']; // Focus on India region
+
+        // Properly categorized Indian names (Hindu and Muslim)
+        $hinduFirstNames = ['Aarav', 'Vivaan', 'Aditya', 'Vihaan', 'Arjun', 'Sai', 'Reyansh', 'Ayaan', 'Krishna', 'Ishaan', 'Diya', 'Ananya', 'Sanya', 'Priya', 'Neha', 'Pooja', 'Rohan', 'Amit', 'Rahul', 'Sneha'];
+        $hinduLastNames = ['Sharma', 'Verma', 'Gupta', 'Malhotra', 'Sharma', 'Patel', 'Reddy', 'Iyer', 'Kumar', 'Singh', 'Joshi', 'Mehta'];
+
+        $muslimFirstNames = ['Mohammed', 'Ahmed', 'Ali', 'Ibrahim', 'Hassan', 'Zayd', 'Hamza', 'Bilal', 'Omar', 'Usman', 'Ayesha', 'Fatima', 'Zainab', 'Maryam', 'Khadija', 'Aaliyah', 'Sana', 'Yasmin', 'Tariq', 'Imran'];
+        $muslimLastNames = ['Khan', 'Ali', 'Shaikh', 'Siddiqui', 'Pathan', 'Ansari', 'Malik', 'Mirza', 'Chaudhry', 'Qureshi', 'Syed', 'Farooqui'];
 
         $batch = [];
         $totalUsers = 1000;
         $batchSize = 250;
 
         for ($i = 1; $i <= $totalUsers; $i++) {
+            // Randomly choose between Hindu and Muslim community pool to keep it balanced
+            $isHindu = (rand(0, 1) == 1);
+
+            if ($isHindu) {
+                $name = $hinduFirstNames[array_rand($hinduFirstNames)] . ' ' . $hinduLastNames[array_rand($hinduLastNames)];
+            } else {
+                $name = $muslimFirstNames[array_rand($muslimFirstNames)] . ' ' . $muslimLastNames[array_rand($muslimLastNames)];
+            }
+
             $batch[] = [
-                'name' => fake()->name(),
+                'name' => $name,
                 'email' => "user{$i}_" . Str::random(5) . "@example.com",
-                'contact_no' => fake()->phoneNumber(),
+                'contact_no' => '+91 ' . rand(7000000000, 9999999999), // Indian format mobile numbers
                 'company_name' => fake()->company(),
-                'country' => $countries[array_rand($countries)],
+                'country' => 'India',
                 'roles' => $rolesList[array_rand($rolesList)],
                 'plan' => $plansList[array_rand($plansList)],
                 'email_verified_at' => now(),
