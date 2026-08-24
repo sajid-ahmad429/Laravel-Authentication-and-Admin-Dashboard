@@ -4,6 +4,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\CommonController;
+use App\Http\Controllers\RoleController;
+use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\WelcomeEmailController;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\ResetPasswordMail;
@@ -43,6 +45,10 @@ foreach ($roles as $role) {
         Route::get('/', [AuthController::class, 'countList'])->name('dashboard');
         Route::get('/users', [UserController::class, 'index'])->name('users.index');
         
+        // Roles & Permissions Management Routes
+        Route::resource('roles', RoleController::class)->names('admin.roles')->only(['index', 'create', 'store', 'destroy']);
+        Route::resource('permissions', PermissionController::class)->names('admin.permissions')->only(['index', 'store', 'destroy']);
+
         // Production-Optimized & Clean Named Routes
         Route::match(['get', 'post'], '/users/registry-data', [UserController::class, 'getTableData'])->name('users.data');
         Route::match(['get', 'post'], '/users/persistence-store', [UserController::class, 'store'])->name('users.store');
