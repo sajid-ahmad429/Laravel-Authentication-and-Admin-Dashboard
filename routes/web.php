@@ -51,8 +51,8 @@ foreach ($roles as $role) {
         Route::get('/users', [UserController::class, 'index'])->name('users.index');
         
         // Roles & Permissions Management Routes
-        Route::resource('roles', RoleController::class)->names('admin.roles')->only(['index', 'create', 'store', 'destroy']);
-        Route::resource('permissions', PermissionController::class)->names('admin.permissions')->only(['index', 'store', 'destroy']);
+        Route::resource('roles', RoleController::class)->only(['index', 'create', 'store', 'destroy']);
+        Route::resource('permissions', PermissionController::class)->only(['index', 'store', 'destroy']);
 
         // SaaS Platform Audit, Plans & Analytics Routes
         Route::get('/activity-logs', [ActivityLogController::class, 'index'])->name('activity_logs.index');
@@ -62,7 +62,7 @@ foreach ($roles as $role) {
 
         // User Profile & System Health Routes
         Route::get('/profile', [ProfileController::class, 'index'])->name('profile.index');
-        Route::post('/profile/update', [ProfileController::class, 'update'])->name('profile.update');
+        Route::post('/profile/update', [ProfileController::class, 'update'])->name('admin.profile.update');
         Route::get('/health', [SystemHealthController::class, 'index'])->name('health.index');
 
         // Production-Optimized & Clean Named Routes
