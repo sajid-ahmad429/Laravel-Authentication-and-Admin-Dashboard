@@ -1,50 +1,87 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Permissions Management</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-100 text-slate-800 p-8">
-    <div class="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow-md">
-        <h1 class="text-2xl font-bold mb-6">Permissions Management</h1>
+@include('Admin.templates.header')
 
-        @if(session('success'))
-            <div class="p-4 mb-4 text-green-800 bg-green-100 rounded-lg">
-                {{ session('success') }}
+@php
+    $role = session('role');
+    $roleName = !empty($role) && in_array($role, ['superadmin', 'admin']) ? $role : 'admin';
+@endphp
+
+<div class="content-wrapper">
+    <div class="container-xxl flex-grow-1 container-p-y">
+
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header border-bottom bg-transparent py-3 d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                    <h5 class="card-title fw-bold mb-1 text-dark">Permissions Management</h5>
+                    <p class="text-muted mb-0 small">Create and manage access rights across system components.</p>
+                </div>
+                <div>
+                    <button class="btn btn-primary shadow-sm" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasAddPermission">
+                        <i class="mdi mdi-plus me-1"></i> Add Permission
+                    </button>
+                </div>
             </div>
-        @endif
 
-        <form action="{{ route('admin.permissions.store') }}" method="POST" class="flex gap-3 mb-6">
-            @csrf
-            <input type="text" name="name" placeholder="Enter permission name (e.g. edit users)" required class="flex-1 px-4 py-2 border rounded-lg">
-            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Add Permission</button>
-        </form>
+            @if(session('success'))
+                <div class="alert alert-success alert-dismissible mx-4 mt-3" role="alert">
+                    {{ session('success') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
 
-        <table class="w-full text-left border-collapse">
-            <thead>
-                <tr class="border-b bg-slate-50 text-slate-600 text-sm">
-                    <th class="p-3">ID</th>
-                    <th class="p-3">Permission Name</th>
-                    <th class="p-3 text-right">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($permissions as $permission)
-                <tr class="border-b hover:bg-slate-50">
-                    <td class="p-3">{{ $permission->id }}</td>
-                    <td class="p-3 font-medium">{{ $permission->name }}</td>
-                    <td class="p-3 text-right">
-                        <form action="{{ route('admin.permissions.destroy', $permission->id) }}" method="POST" onsubmit="return confirm('Delete permission?');">
-                            @csrf
-                            @method('DELETE')
-                            <button type="submit" class="text-xs px-3 py-1 bg-rose-600 text-white rounded hover:bg-rose-700">Delete</button>
-                        </form>
-                    </td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
+            <div class="card-body px-4 py-4">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle border-top w-full">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>Permission Name</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($permissions as $permission)
+                            <tr>
+                                <td class="fw-bold">{{ $permission->id }}</td>
+                                <td class="fw-semibold text-dark">{{ $permission->name }}</td>
+                                <td class="text-center">
+                                    <form action="{{ route($roleName . '.permissions.destroy', $permission->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this permission?');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="mdi mdi-delete-outline me-1"></i> Delete
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Offcanvas drawer to add permission -->
+        <div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasAddPermission" aria-labelledby="offcanvasAddPermissionLabel">
+            <div class="offcanvas-header border-bottom bg-light">
+                <h5 id="offcanvasAddPermissionLabel" class="offcanvas-title fw-bold text-dark">Add New Permission</h5>
+                <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+            </div>
+            <div class="offcanvas-body mx-0 flex-grow-0 h-100 p-4">
+                <form action="{{ route($roleName . '.permissions.store') }}" method="POST">
+                    @csrf
+                    <div class="form-floating form-floating-outline mb-4">
+                        <input type="text" class="form-control" id="permNameInput" name="name" placeholder="Permission Name (e.g. edit users)" required />
+                        <label for="permNameInput">Permission Name <span class="text-danger">*</span></label>
+                    </div>
+
+                    <div class="d-flex gap-3 mt-4">
+                        <button type="submit" class="btn btn-primary flex-fill shadow-sm">Save Permission</button>
+                        <button type="reset" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
     </div>
-</body>
-</html>
+    @include('Admin.templates.footer')
+</div>

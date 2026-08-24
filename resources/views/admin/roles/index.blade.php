@@ -1,61 +1,113 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Roles Management</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-100 text-slate-800 p-8">
-    <div class="max-w-6xl mx-auto bg-white p-6 rounded-xl shadow-md">
-        <div class="flex justify-between items-center mb-6">
-            <h1 class="text-2xl font-bold">Roles Management</h1>
-            <a href="{{ route('admin.roles.create') }}" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
-                + Create New Role
-            </a>
+@include('Admin.templates.header')
+
+@php
+    $role = session('role');
+    $roleName = !empty($role) && in_array($role, ['superadmin', 'admin']) ? $role : 'admin';
+@endphp
+
+<div class="content-wrapper">
+    <div class="container-xxl flex-grow-1 container-p-y">
+
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header border-bottom bg-transparent py-3 d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                    <h5 class="card-title fw-bold mb-1 text-dark">Roles Management</h5>
+                    <p class="text-muted mb-0 small">Define system roles and assign capabilities across the platform.</p>
+                </div>
+                <div>
+                    <button class="btn btn-primary shadow-sm" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasAddRole">
+                        <i class="mdi mdi-plus me-1"></i> Add New Role
+                    </button>
+                </div>
+            </div>
+
+            @if(session('success'))
+                <div class="alert alert-success alert-dismissible mx-4 mt-3" role="alert">
+                    {{ session('success') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+
+            <div class="card-body px-4 py-4">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle border-top w-full">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>Role Name</th>
+                                <th>Assigned Permissions</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($roles as $roleItem)
+                            <tr>
+                                <td class="fw-bold">{{ $roleItem->id }}</td>
+                                <td class="fw-semibold text-uppercase text-primary">{{ $roleItem->name }}</td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-1">
+                                        @forelse($roleItem->permissions as $perm)
+                                            <span class="badge bg-label-primary rounded-pill">{{ $perm->name }}</span>
+                                        @empty
+                                            <span class="text-muted small">No permissions assigned</span>
+                                        @endforelse
+                                    </div>
+                                </td>
+                                <td class="text-center">
+                                    <form action="{{ route($roleName . '.roles.destroy', $roleItem->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this role?');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="mdi mdi-delete-outline me-1"></i> Delete
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
-        @if(session('success'))
-            <div class="p-4 mb-4 text-green-800 bg-green-100 rounded-lg">
-                {{ session('success') }}
+        <!-- Offcanvas drawer to add new role -->
+        <div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasAddRole" aria-labelledby="offcanvasAddRoleLabel">
+            <div class="offcanvas-header border-bottom bg-light">
+                <h5 id="offcanvasAddRoleLabel" class="offcanvas-title fw-bold text-dark">Add New Role</h5>
+                <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
             </div>
-        @endif
+            <div class="offcanvas-body mx-0 flex-grow-0 h-100 p-4">
+                <form action="{{ route($roleName . '.roles.store') }}" method="POST">
+                    @csrf
+                    <div class="form-floating form-floating-outline mb-4">
+                        <input type="text" class="form-control" id="roleNameInput" name="name" placeholder="Role Name (e.g. editor)" required />
+                        <label for="roleNameInput">Role Name <span class="text-danger">*</span></label>
+                    </div>
 
-        <table class="w-full text-left border-collapse">
-            <thead>
-                <tr class="border-b bg-slate-50 text-slate-600 text-sm">
-                    <th class="p-3">ID</th>
-                    <th class="p-3">Role Name</th>
-                    <th class="p-3">Permissions</th>
-                    <th class="p-3 text-right">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($roles as $role)
-                <tr class="border-b hover:bg-slate-50">
-                    <td class="p-3">{{ $role->id }}</td>
-                    <td class="p-3 font-semibold uppercase">{{ $role->name }}</td>
-                    <td class="p-3">
-                        <div class="flex flex-wrap gap-1">
-                            @forelse($role->permissions as $perm)
-                                <span class="px-2 py-0.5 text-xs bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200">
-                                    {{ $perm->name }}
-                                </span>
-                            @empty
-                                <span class="text-xs text-slate-400">No permissions</span>
-                            @endforelse
+                    <div class="mb-4">
+                        <label class="form-label fw-bold mb-2">Assign Permissions</label>
+                        <div class="row g-2">
+                            @foreach($permissions as $permission)
+                            <div class="col-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="permissions[]" value="{{ $permission->name }}" id="perm_{{ $permission->id }}">
+                                    <label class="form-check-label text-capitalize" for="perm_{{ $permission->id }}">
+                                        {{ $permission->name }}
+                                    </label>
+                                </div>
+                            </div>
+                            @endforeach
                         </div>
-                    </td>
-                    <td class="p-3 text-right">
-                        <form action="{{ route('admin.roles.destroy', $role->id) }}" method="POST" onsubmit="return confirm('Delete role?');">
-                            @csrf
-                            @method('DELETE')
-                            <button type="submit" class="text-xs px-3 py-1 bg-rose-600 text-white rounded hover:bg-rose-700">Delete</button>
-                        </form>
-                    </td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
+                    </div>
+
+                    <div class="d-flex gap-3 mt-4">
+                        <button type="submit" class="btn btn-primary flex-fill shadow-sm">Save Role</button>
+                        <button type="reset" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
     </div>
-</body>
-</html>
+    @include('Admin.templates.footer')
+</div>

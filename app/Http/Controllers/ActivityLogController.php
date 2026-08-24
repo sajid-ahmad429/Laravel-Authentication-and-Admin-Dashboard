@@ -12,7 +12,8 @@ class ActivityLogController extends Controller
     public function index(): View
     {
         $activeMenu = 'activity_logs';
-        return view('admin.activity_logs.index', compact('activeMenu'));
+        $logs = ActivityLog::orderBy('id', 'desc')->paginate(15);
+        return view('admin.activity_logs.index', compact('activeMenu', 'logs'));
     }
 
     public function getLogsData(Request $request): JsonResponse

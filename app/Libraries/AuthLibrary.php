@@ -160,7 +160,7 @@ class AuthLibrary
         // SET USER SESSION (Yeh session mein 'role' save karta hoga)
         $this->setUserSession($user);
 
-        // FIX: Use autoRedirect() instead of hardcoded 'dashboard' 
+        // FIX: Use autoRedirect() instead of hardcoded 'dashboard'
         // to safely redirect to '/admin', '/superadmin', etc. based on their config/role
         return redirect()->to($this->autoRedirect())->with('success', 'Login successful!');
     }
@@ -497,12 +497,16 @@ class AuthLibrary
      */
     public function setUserSession($user)
     {
+        // Resolve Spatie role name safely without triggering property shadow collision
+        $spatieRole = $user->roles()->pluck('name')->first();
+        $roleName = strtolower($spatieRole ?? 'admin');
+
         // Prepare user session data
         $data = [
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
-            'role' => $user->roles,
+            'role' => $roleName,
             'isLoggedIn' => true,
             'ipaddress' => request()->ip(), // Get IP address
         ];

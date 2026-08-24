@@ -232,7 +232,7 @@
                         aria-label="Close"></button>
                 </div>
                 <div class="offcanvas-body mx-0 flex-grow-0 h-100 p-4">
-                    <form class="add-new-user pt-0" id="addNewUserForm" action="{{ url($roleName . '/add-new-users') }}"
+                    <form class="add-new-user pt-0" id="addNewUserForm" action="{{ route($roleName . '.users.store') }}"
                         method="post">
                         @csrf
                         <input type="hidden" id="userId" value="0" name="user_id" />
@@ -297,11 +297,12 @@
                         <div class="form-floating form-floating-outline mb-4 fv-row">
                             <select id="userRole" class="form-select required" name="user-role">
                                 <option value="">Select Roles</option>
-                                <option value="subscriber">Subscriber</option>
-                                <option value="editor">Editor</option>
-                                <option value="maintainer">Maintainer</option>
-                                <option value="author">Author</option>
+                                <option value="superadmin">Superadmin</option>
                                 <option value="admin">Admin</option>
+                                <option value="author">Author</option>
+                                <option value="maintainer">Maintainer</option>
+                                <option value="editor">Editor</option>
+                                <option value="subscriber">Subscriber</option>
                             </select>
                             <label for="userRole">User Role <span class="text-danger">*</span></label>
                         </div>
@@ -310,6 +311,7 @@
                             <select id="userPlan" class="form-select required" name="user-plan">
                                 <option value="">Select Plans</option>
                                 <option value="basic">Basic</option>
+                                <option value="professional">Professional</option>
                                 <option value="enterprise">Enterprise</option>
                                 <option value="company">Company</option>
                                 <option value="team">Team</option>
@@ -750,8 +752,8 @@
                     $('#userEmail').val(data.email);
                     $('#userContact').val(data.contact_no);
                     $('#companyName').val(data.company_name);
-                    $('#userRole').val(data.roles);
-                    $('#userPlan').val(data.plan);
+                    $('#userRole').val(data.roles ? data.roles.toLowerCase() : '');
+                    $('#userPlan').val(data.plan ? data.plan.toLowerCase() : '');
                     $('#country').val(data.country).trigger('change');
 
                     openPanel("Modify User Profile", "Update Configuration");

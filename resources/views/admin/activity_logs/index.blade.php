@@ -1,32 +1,62 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Activity Master Logs</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-100 text-slate-800 p-8">
-    <div class="max-w-6xl mx-auto bg-white p-6 rounded-xl shadow-md">
-        <h1 class="text-2xl font-bold mb-6">Activity Master Audit Trail</h1>
+@include('Admin.templates.header')
 
-        <table class="w-full text-left border-collapse">
-            <thead>
-                <tr class="border-b bg-slate-50 text-slate-600 text-sm">
-                    <th class="p-3">ID</th>
-                    <th class="p-3">User</th>
-                    <th class="p-3">Action</th>
-                    <th class="p-3">Table</th>
-                    <th class="p-3">Log Message</th>
-                    <th class="p-3">IP Address</th>
-                    <th class="p-3">Timestamp</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr class="border-b text-sm">
-                    <td class="p-3 text-slate-400" colspan="7">Audit logs loaded via DataTables server-side endpoint.</td>
-                </tr>
-            </tbody>
-        </table>
+@php
+    $role = session('role');
+    $roleName = !empty($role) && in_array($role, ['superadmin', 'admin']) ? $role : 'admin';
+@endphp
+
+<div class="content-wrapper">
+    <div class="container-xxl flex-grow-1 container-p-y">
+
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header border-bottom bg-transparent py-3 d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                    <h5 class="card-title fw-bold mb-1 text-dark">Activity Audit Trail</h5>
+                    <p class="text-muted mb-0 small">Real-time system events, change tracking, and security logs.</p>
+                </div>
+            </div>
+
+            <div class="card-body px-4 py-4">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle border-top w-full" id="activityLogsTable">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>User</th>
+                                <th>Action</th>
+                                <th>Table</th>
+                                <th>Log Message</th>
+                                <th>IP Address</th>
+                                <th>Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($logs as $log)
+                            <tr>
+                                <td class="fw-bold">{{ $log->id }}</td>
+                                <td>{{ $log->user_name ?? 'System' }}</td>
+                                <td><span class="badge bg-label-info text-uppercase">{{ $log->action_type }}</span></td>
+                                <td><code>{{ $log->table_name }}</code></td>
+                                <td class="small">{{ $log->log_text }}</td>
+                                <td><small class="text-muted">{{ $log->ip_address }}</small></td>
+                                <td><small class="text-muted">{{ $log->created_at }}</small></td>
+                            </tr>
+                            @empty
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">No audit activity logs recorded yet.</td>
+                            </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+                @if(method_exists($logs, 'links'))
+                <div class="mt-3">
+                    {{ $logs->links() }}
+                </div>
+                @endif
+            </div>
+        </div>
+
     </div>
-</body>
-</html>
+    @include('Admin.templates.footer')
+</div>
