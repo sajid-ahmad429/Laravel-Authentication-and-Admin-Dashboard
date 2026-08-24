@@ -1,31 +1,37 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>SaaS Subscription Plans</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-100 text-slate-800 p-8">
-    <div class="max-w-6xl mx-auto">
-        <h1 class="text-3xl font-bold mb-8 text-center">SaaS Subscription Plans</h1>
+@include('Admin.templates.header')
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<div class="content-wrapper">
+    <div class="container-xxl flex-grow-1 container-p-y">
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h4 class="fw-bold mb-1">SaaS Subscription Plans</h4>
+                <p class="text-muted mb-0">Select and manage platform tier subscriptions.</p>
+            </div>
+        </div>
+
+        <div class="row g-4">
             @foreach($plans as $plan)
-            <div class="p-6 rounded-2xl border shadow-sm bg-white hover:shadow-lg transition">
-                <h2 class="text-xl font-bold mb-2">{{ $plan['name'] }}</h2>
-                <div class="text-3xl font-extrabold text-indigo-600 mb-6">{{ $plan['price'] }}</div>
-                <ul class="space-y-3 mb-8 text-sm text-slate-600">
-                    @foreach($plan['features'] as $feature)
-                    <li class="flex items-center gap-2">
-                        <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                        <span>{{ $feature }}</span>
-                    </li>
-                    @endforeach
-                </ul>
-                <button class="w-full py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition">Select Plan</button>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body p-4 text-center">
+                        <h5 class="fw-bold mb-2">{{ $plan['name'] }}</h5>
+                        <h2 class="text-primary fw-extrabold mb-4">{{ $plan['price'] }}</h2>
+                        <ul class="list-unstyled text-start mb-4">
+                            @foreach($plan['features'] as $feature)
+                            <li class="mb-2 d-flex align-items-center gap-2">
+                                <i class="mdi mdi-check-circle text-success fs-5"></i>
+                                <span class="text-muted small">{{ $feature }}</span>
+                            </li>
+                            @endforeach
+                        </ul>
+                        <button class="btn btn-primary w-100 shadow-sm">Select Plan</button>
+                    </div>
+                </div>
             </div>
             @endforeach
         </div>
+
     </div>
-</body>
-</html>
+    @include('Admin.templates.footer')
+</div>
