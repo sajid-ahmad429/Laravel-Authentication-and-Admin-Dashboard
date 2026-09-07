@@ -99,7 +99,8 @@ class RoleController extends Controller
             $role->syncPermissions($request->input('permissions'));
         }
 
-        return redirect()->route('admin.roles.index')->with('success', 'Role created successfully with permissions.');
+        $roleName = strtolower(session('role', 'admin'));
+        return redirect()->route($roleName . '.roles.index')->with('success', 'Role created successfully with permissions.');
     }
 
     public function destroy($id): RedirectResponse
@@ -107,6 +108,7 @@ class RoleController extends Controller
         $role = Role::findOrFail($id);
         $role->delete();
 
-        return redirect()->route('admin.roles.index')->with('success', 'Role deleted successfully.');
+        $roleName = strtolower(session('role', 'admin'));
+        return redirect()->route($roleName . '.roles.index')->with('success', 'Role deleted successfully.');
     }
 }
