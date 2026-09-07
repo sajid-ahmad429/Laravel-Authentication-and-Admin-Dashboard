@@ -24,7 +24,8 @@ class PermissionController extends Controller
 
         Permission::create(['name' => strtolower($request->input('name'))]);
 
-        return redirect()->route('admin.permissions.index')->with('success', 'Permission created successfully.');
+        $roleName = strtolower(session('role', 'admin'));
+        return redirect()->route($roleName . '.permissions.index')->with('success', 'Permission created successfully.');
     }
 
     public function destroy($id): RedirectResponse
@@ -32,6 +33,7 @@ class PermissionController extends Controller
         $permission = Permission::findOrFail($id);
         $permission->delete();
 
-        return redirect()->route('admin.permissions.index')->with('success', 'Permission deleted successfully.');
+        $roleName = strtolower(session('role', 'admin'));
+        return redirect()->route($roleName . '.permissions.index')->with('success', 'Permission deleted successfully.');
     }
 }

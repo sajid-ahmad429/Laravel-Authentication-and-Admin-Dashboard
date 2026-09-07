@@ -13,14 +13,23 @@ class RoleMiddleware
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */
-    public function handle(Request $request, Closure $next, $role): Response
+    public function handle(Request $request, Closure $next, $role = null): Response
     {
-        // Check if the user is logged in via session or Auth
-        if (session()->has('isLoggedIn') && strtolower(session('role')) === strtolower($role)) {
+        $targetRole = $role ?? $request->route('role') ?? session('role');
+
+        if (!$targetRole) {
             return $next($request);
         }
 
-        if (auth()->check() && (auth()->user()->hasRole($role) || auth()->user()->hasRole(strtolower($role)))) {
+        // Check if the user is logged in via session or Auth
+        if (session()->has('isLoggedIn')) {
+            $userRole = strtolower(session('role', ''));
+            if ($userRole === strtolower($targetRole) || $userRole === 'superadmin') {
+                return $next($request);
+            }
+        }
+
+        if (auth()->check() && (auth()->user()->hasRole($targetRole) || auth()->user()->hasRole(strtolower($targetRole)) || auth()->user()->hasRole('superadmin'))) {
             return $next($request);
         }
 

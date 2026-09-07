@@ -22,6 +22,13 @@ class CommonController extends Controller
         $id = base64_decode($request->input('id'));
         $status = $request->input('status');
         $tableName = base64_decode($request->input('name'));
+
+        // Whitelist allowed tables to prevent arbitrary table manipulation
+        $allowedTables = ['users', 'roles', 'permissions', 'activitymaster'];
+        if (!in_array($tableName, $allowedTables)) {
+            return response()->json(['success' => '0', 'message' => 'Unauthorized table operation.'], 403);
+        }
+
         $fieldNames = Schema::getColumnListing($tableName);
 
         $result = false; // Initialize the result variable
