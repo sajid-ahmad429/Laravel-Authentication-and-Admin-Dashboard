@@ -353,7 +353,9 @@
       pager.querySelectorAll('button').forEach(function (b) {
         b.classList.add('adt-page-btn');
         b.removeAttribute('style');
-        if (b.classList.contains('tabulator-page-active')) b.classList.add('active');
+        if (b.classList.contains('tabulator-page-active') || b.classList.contains('active')) {
+          b.classList.add('active');
+        }
       });
     });
 
