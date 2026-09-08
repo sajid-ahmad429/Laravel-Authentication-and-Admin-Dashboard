@@ -2,113 +2,130 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Spatie\Permission\Models\Role;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Spatie\Permission\Models\Permission;
-use Illuminate\Http\RedirectResponse;
-use Illuminate\View\View;
+use Spatie\Permission\Models\Role;
+use Throwable;
 
 class RoleController extends Controller
 {
-    public function index(): View
+    public function index()
     {
-        $permissions = Permission::all();
-        $activeMenu = 'roles';
-
-        return view('admin.roles.index', compact('permissions', 'activeMenu'));
+        return view('admin.roles.index', [
+            'activeMenu'  => 'roles',
+            'permissions' => Permission::orderBy('name')->get(['id', 'name']),
+        ]);
     }
 
-    public function getTableData(Request $request)
+    public function create()
     {
-        if (!$request->ajax()) {
-            return response()->json(['status' => 0, 'message' => 'Invalid Request'], 400);
-        }
+        return view('admin.roles.create', [
+            'activeMenu'  => 'roles',
+            'permissions' => Permission::orderBy('name')->get(['id', 'name']),
+        ]);
+    }
 
+    /**
+     * Server-side data feed for the roles table (Tabulator contract).
+     */
+    public function getTableData(Request $request): JsonResponse
+    {
         $validated = $request->validate([
-            'start'          => ['required', 'integer', 'min:0'],
-            'length'         => ['required', 'integer', 'min:1'],
-            'search.value'   => ['nullable', 'string', 'max:100'],
+            'page'     => ['sometimes', 'integer', 'min:1'],
+            'size'     => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'sort_dir' => ['sometimes', 'in:asc,desc'],
+            'search'   => ['sometimes', 'nullable', 'string', 'max:100'],
         ]);
 
-        $query = Role::with('permissions');
-        $recordsTotal = Role::count();
+        $page   = (int) ($validated['page'] ?? 1);
+        $size   = (int) ($validated['size'] ?? 10);
+        $dir    = $validated['sort_dir'] ?? 'desc';
+        $search = trim((string) ($validated['search'] ?? ''));
 
-        if (!empty($validated['search']['value'])) {
-            $search = $validated['search']['value'];
-            $query->where('name', 'LIKE', "%{$search}%");
+        $query = Role::query()->with('permissions:id,name');
+
+        if ($search !== '') {
+            $like = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
+            $query->where('name', 'LIKE', $like);
         }
 
-        $recordsFiltered = $query->count();
-        $roles = $query->skip($validated['start'])->take($validated['length'])->orderBy('id', 'desc')->get();
+        $total = (clone $query)->count();
 
-        $data = [];
-        foreach ($roles as $role) {
-            $actionButtons = '
-            <div class="dropdown">
-                <button type="button" class="btn p-0 dropdown-toggle hide-arrow" data-bs-toggle="dropdown">
-                    <i class="mdi mdi-dots-vertical"></i>
-                </button>
-                <div class="dropdown-menu">
-                    <a class="dropdown-item" href="javascript:void(0);"><i class="mdi mdi-pencil-outline me-1"></i> Edit</a>
-                    <form action="' . route('admin.roles.destroy', $role->id) . '" method="POST" style="display:inline;">
-                        ' . csrf_field() . '
-                        ' . method_field('DELETE') . '
-                        <button type="submit" class="dropdown-item text-danger" onclick="return confirm(\'Are you sure?\')"><i class="mdi mdi-trash-can-outline me-1"></i> Trash</button>
-                    </form>
-                </div>
-            </div>';
-
-            $permissionsList = $role->permissions->pluck('name')->map(function ($perm) {
-                return '<span class="badge bg-label-primary m-1">' . e($perm) . '</span>';
-            })->implode('');
-
-            $data[] = [
-                'id'          => $role->id,
-                'name'        => ucwords(e($role->name)),
-                'permissions' => $permissionsList ?: '<span class="text-muted">None</span>',
-                'actions'     => '<div class="text-center">' . $actionButtons . '</div>'
-            ];
-        }
+        $roles = $query
+            ->orderBy('id', $dir)
+            ->forPage($page, $size)
+            ->get();
 
         return response()->json([
-            'draw'            => intval($request->input('draw')),
-            'recordsTotal'    => $recordsTotal,
-            'recordsFiltered' => $recordsFiltered,
-            'data'            => $data
+            'last_page'    => (int) max(1, ceil($total / $size)),
+            'total'        => $total,
+            'current_page' => $page,
+            'data'         => $roles->map(fn (Role $role) => [
+                'id'          => $role->id,
+                'name'        => $role->name,
+                'label'       => ucwords(str_replace('-', ' ', $role->name)),
+                'users_count' => DB::table('model_has_roles')
+                    ->where('role_id', $role->id)
+                    ->count(),
+                'permissions' => $role->permissions->map(fn ($p) => $p->name)->values()->all(),
+                'protected'   => in_array($role->name, (array) config('auth.protected_roles'), true),
+            ])->all(),
         ]);
     }
 
-    public function create(): View
+    public function store(Request $request)
     {
-        $permissions = Permission::all();
-        $activeMenu = 'roles';
-
-        return view('admin.roles.create', compact('permissions', 'activeMenu'));
-    }
-
-    public function store(Request $request): RedirectResponse
-    {
-        $request->validate([
-            'name' => 'required|unique:roles,name',
-            'permissions' => 'nullable|array',
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'min:2', 'max:50', 'regex:/^[a-z0-9\-]+$/', Rule::unique('roles', 'name')],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => ['string', Rule::exists('permissions', 'name')],
+        ], [
+            'name.regex' => 'Role name may only contain lowercase letters, numbers and dashes.',
         ]);
 
-        $role = Role::create(['name' => strtolower($request->input('name'))]);
+        $role = Role::create(['name' => $validated['name']]);
 
-        if ($request->has('permissions')) {
-            $role->syncPermissions($request->input('permissions'));
+        if (! empty($validated['permissions'])) {
+            $role->syncPermissions($validated['permissions']);
         }
 
-        $roleName = strtolower(session('role', 'admin'));
-        return redirect()->route($roleName . '.roles.index')->with('success', 'Role created successfully with permissions.');
+        return redirect()
+            ->route('panel.roles.index')
+            ->with('success', 'Role created successfully.');
     }
 
-    public function destroy($id): RedirectResponse
+    public function destroy(Request $request): JsonResponse
     {
-        $role = Role::findOrFail($id);
-        $role->delete();
+        $validated = $request->validate(['id' => ['required', 'integer', 'min:1']]);
 
-        $roleName = strtolower(session('role', 'admin'));
-        return redirect()->route($roleName . '.roles.index')->with('success', 'Role deleted successfully.');
+        $role = Role::find((int) $validated['id']);
+
+        if (! $role) {
+            return response()->json(['status' => 0, 'message' => 'Role not found.'], 404);
+        }
+
+        if (in_array($role->name, (array) config('auth.protected_roles'), true)) {
+            return response()->json(['status' => 0, 'message' => 'System roles cannot be deleted.'], 403);
+        }
+
+        $inUse = DB::table('model_has_roles')->where('role_id', $role->id)->count();
+
+        if ($inUse > 0) {
+            return response()->json([
+                'status'  => 0,
+                'message' => "This role is assigned to {$inUse} user(s) and cannot be deleted.",
+            ], 409);
+        }
+
+        try {
+            $role->delete();
+        } catch (Throwable $e) {
+            return response()->json(['status' => 0, 'message' => 'Could not delete the role.'], 500);
+        }
+
+        return response()->json(['status' => 1, 'message' => 'Role deleted successfully.']);
     }
 }
