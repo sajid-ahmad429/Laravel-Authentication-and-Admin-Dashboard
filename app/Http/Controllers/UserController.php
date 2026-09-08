@@ -29,17 +29,22 @@ class UserController extends Controller
         $data['activeMenu'] = "users";
         $data['assetsJs'] = ['app-user-list'];
 
-        $data['active'] = Cache::remember('count_active', 120, function () {
-            return DB::table('users')->where('status', 1)->where('trash', 0)->count();
+        // Bolt performance optimization: Combine 3 separate count queries into 1 single conditional aggregation query.
+        // Expected impact: Reduces database round-trips from 3 queries to 1 on cache misses (~66% query count reduction).
+        $userCounts = Cache::remember('user_counts_summary', 120, function () {
+            return DB::table('users')
+                ->where('trash', 0)
+                ->selectRaw('
+                    COUNT(*) as totalUsers,
+                    COUNT(CASE WHEN status = 1 THEN 1 END) as active,
+                    COUNT(CASE WHEN status = 0 THEN 1 END) as inactive
+                ')
+                ->first();
         });
 
-        $data['inactive'] = Cache::remember('count_inactive', 120, function () {
-            return DB::table('users')->where('status', 0)->where('trash', 0)->count();
-        });
-
-        $data['totalUsers'] = Cache::remember('count_total', 120, function () {
-            return DB::table('users')->where('trash', 0)->count();
-        });
+        $data['active'] = $userCounts->active ?? 0;
+        $data['inactive'] = $userCounts->inactive ?? 0;
+        $data['totalUsers'] = $userCounts->totalUsers ?? 0;
 
         return view('masters.users.list', $data);
     }
@@ -187,13 +192,15 @@ class UserController extends Controller
         // ⭐ STEP 2: Yeh search filter lagne ke baad ka total hai (e.g. 15)
         $recordsFiltered = $query->count();
 
-        // Dashboard counters calculation
-        $aggregateData = DB::table('users')
-            ->selectRaw("
-            COUNT(CASE WHEN status = 1 AND trash = 0 THEN 1 END) as active_count,
-            COUNT(CASE WHEN status = 0 AND trash = 0 THEN 1 END) as inactive_count,
-            COUNT(CASE WHEN trash = 1 THEN 1 END) as trashed_count
-        ")->first();
+        // Bolt performance optimization: Cache aggregate statistics for 120 seconds to prevent recalculating table stats on every DataTables request/draw.
+        $aggregateData = Cache::remember('user_dashboard_aggregates', 120, function () {
+            return DB::table('users')
+                ->selectRaw("
+                COUNT(CASE WHEN status = 1 AND trash = 0 THEN 1 END) as active_count,
+                COUNT(CASE WHEN status = 0 AND trash = 0 THEN 1 END) as inactive_count,
+                COUNT(CASE WHEN trash = 1 THEN 1 END) as trashed_count
+            ")->first();
+        });
 
         // Sorting Logic
         $sortColumnIndex = isset($validated['order'][0]['column']) ? $validated['order'][0]['column'] : 0;
@@ -339,6 +346,8 @@ class UserController extends Controller
         Cache::forget('count_active');
         Cache::forget('count_inactive');
         Cache::forget('count_total');
+        Cache::forget('user_counts_summary');
+        Cache::forget('user_dashboard_aggregates');
         Cache::forget('dt_total_base');
         Cache::forget('users_all_count');
         Cache::forget('users_inactive_count');
