@@ -215,7 +215,7 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    var dataUrl   = {{ route('panel.users.data') === '' ? "''" : "'" . route('panel.users.data') . "'" }};
+    var dataUrl   = '{{ route('panel.users.data') }}';
     var storeUrl  = '{{ route('panel.users.store') }}';
     var detailUrl = '{{ route('panel.users.details') }}';
     var trashUrl  = '{{ route('panel.users.trash') }}';

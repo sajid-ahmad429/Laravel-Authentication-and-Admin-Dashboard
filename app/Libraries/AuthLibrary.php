@@ -7,10 +7,9 @@ use App\Mail\SendActivationMail;
 use App\Models\AuthToken;
 use App\Models\AuthModel;
 use App\Models\User;
-use Carbon\CarbonInterface;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cookie;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Session;
@@ -78,7 +77,7 @@ class AuthLibrary
                 'user_id'        => $user->id ?? null,
                 'name'           => $user->name ?? null,
                 'email'          => $email,
-                'role'           => $user?->getRoleNames()->first() ?? $user->roles ?? null,
+                'role'           => $user?->getRoleNames()->first(),
                 'ip_address'     => request()->ip(),
                 'user_agent'     => request()->userAgent(),
                 'device_type'    => $this->detectDevice(request()),
@@ -98,7 +97,7 @@ class AuthLibrary
                 'user_id'        => $user->id,
                 'name'           => $user->name,
                 'email'          => $user->email,
-                'role'           => $user->getRoleNames()->first() ?? $user->roles,
+                'role'           => $user->getRoleNames()->first(),
                 'ip_address'     => request()->ip(),
                 'user_agent'     => request()->userAgent(),
                 'device_type'    => $this->detectDevice(request()),
@@ -202,7 +201,6 @@ class AuthLibrary
             $user->status    = 1;
             $user->trash     = 0;
             $user->activated = 0;
-            $user->roles     = config('auth.default_role', 'subscriber'); // legacy column, least privilege
             $user->save();
 
             // Assign the Spatie role (least privilege).
@@ -463,7 +461,7 @@ class AuthLibrary
             return false;
         }
 
-        if ($expiry && now()->gte(CarbonInterface::parse($expiry))) {
+        if ($expiry && now()->gte(Carbon::parse($expiry))) {
             return false;
         }
 

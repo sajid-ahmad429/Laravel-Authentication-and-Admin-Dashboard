@@ -314,13 +314,13 @@
       },
       ajaxResponse: function (url, params, response) {
         // Normalize Laravel payload to Tabulator's remote contract.
+        self.lastTotal = response.total || (response.data ? response.data.length : 0);
         if (typeof self.options.onData === 'function') {
           self.options.onData(response, self);
         }
         return {
           last_page: response.last_page || 1,
-          data: response.data || [],
-          _meta: response
+          data: response.data || []
         };
       },
       columns: (self.options.columns || []).map(function (c) {
@@ -414,7 +414,7 @@
 
   AdminTable.prototype.export = function (type) {
     type = type === 'json' ? 'json' : 'csv';
-    this.tabulator.download(type, this.options.exportName + '.' + type, true, 'utf-8');
+    this.tabulator.download(type, this.options.exportName + '.' + type);
   };
 
   AdminTable.prototype.getTabulator = function () { return this.tabulator; };
