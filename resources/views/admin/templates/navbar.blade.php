@@ -69,10 +69,13 @@
                         </li>
 
                         <li>
-                            <a class="dropdown-item" href="{{ route('logout') }}">
-                                <i class="mdi mdi-logout me-2"></i>
-                                <span class="align-middle">Log Out</span>
-                            </a>
+                            <form action="{{ route('logout') }}" method="POST" class="d-inline">
+                                @csrf
+                                <button type="submit" class="dropdown-item">
+                                    <i class="mdi mdi-logout me-2"></i>
+                                    <span class="align-middle">Log Out</span>
+                                </button>
+                            </form>
                         </li>
                     </ul>
                 </li>

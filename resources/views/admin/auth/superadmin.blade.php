@@ -1,4 +1,4 @@
-@include('Admin.templates.header')
+@include('admin.templates.header')
 <!-- Content wrapper -->
 <div class="content-wrapper">
     <!-- Content -->
@@ -814,4 +814,4 @@
     </div>
     <!-- / Content -->
 <!-- Content wrapper -->
-@include('Admin.templates.footer')
+@include('admin.templates.footer')

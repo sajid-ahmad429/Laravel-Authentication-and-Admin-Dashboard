@@ -41,7 +41,7 @@ class ResetPasswordMail extends Mailable implements ShouldQueue
     public function content(): Content
     {
         return new Content(
-            view: 'Admin.emails.forgotpassword', // This should be the view path where you want to display the email content.
+            view: 'admin.emails.forgotpassword', // This should be the view path where you want to display the email content.
             with: [
                 'name' => $this->name,
                 'resetlink' => $this->resetlink,

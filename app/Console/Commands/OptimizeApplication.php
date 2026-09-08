@@ -112,11 +112,9 @@ class OptimizeApplication extends Command
             }
         }
 
-        // Optimize Composer autoloader
-        if ($this->option('detailed')) {
-            $this->line('   - Optimizing Composer autoloader');
-        }
-        exec('composer install --optimize-autoloader --no-dev --quiet 2>/dev/null');
+        // NOTE: Composer autoloader optimization is intentionally NOT run from
+        // here. Running `composer install --no-dev` at runtime can break a live
+        // deploy; run `composer dump-autoload --optimize` during deployment instead.
 
         $this->info('   ✓ Laravel optimization completed');
         $this->newLine();

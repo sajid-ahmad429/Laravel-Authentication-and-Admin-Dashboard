@@ -1,4 +1,4 @@
-@include('Admin.templates.header')
+@include('admin.templates.header')
 
 @php
     $role = session('role');
@@ -330,7 +330,7 @@
             </div>
         </div>
     </div>
-    @include('Admin.templates.footer')
+    @include('admin.templates.footer')
 </div>
 
 <script>
@@ -704,13 +704,23 @@
                         data: $(formElement).serialize(),
                         success: function(response) {
                             if (response.status == 1) {
-                                Swal.fire({
+                                var swalConfig = {
                                     icon: 'success',
                                     title: 'Success!',
                                     text: response.message,
-                                    timer: 1500, // Timer thoda kam kar sakte hain (1.5 sec)
+                                    timer: 1500,
                                     showConfirmButton: false
-                                });
+                                };
+                                // New users get a random one-time password: keep the
+                                // dialog open so the admin can copy and share it.
+                                if (response.temp_password) {
+                                    swalConfig.text = response.message +
+                                        ' One-time password: ' + response.temp_password +
+                                        ' — share it securely, it will not be shown again.';
+                                    swalConfig.timer = undefined;
+                                    swalConfig.showConfirmButton = true;
+                                }
+                                Swal.fire(swalConfig);
                                 closePanel();
 
                                 // Table ko background mein reload hone dein
@@ -726,7 +736,27 @@
                             }
                         },
                         error: function(xhr) {
-                            // Aapka 422 validation error code yahan as it is rahega...
+                            var message = 'Could not save the user. Please try again.';
+                            if (xhr.responseJSON) {
+                                if (xhr.responseJSON.message) {
+                                    message = xhr.responseJSON.message;
+                                }
+                                if (xhr.responseJSON.errors) {
+                                    var firstField = Object.keys(xhr.responseJSON.errors)[0];
+                                    if (firstField) {
+                                        message += ' (' + xhr.responseJSON.errors[firstField][0] + ')';
+                                    }
+                                }
+                            } else if (xhr.status === 403) {
+                                message = 'Forbidden. You do not have permission to perform this action.';
+                            } else if (xhr.status === 401) {
+                                message = 'Your session has expired. Please log in again.';
+                            }
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Oops...',
+                                text: message
+                            });
                         },
                         complete: function() {
                             // Button ko wapas original state mein laayein

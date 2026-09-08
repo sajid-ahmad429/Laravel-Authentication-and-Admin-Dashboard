@@ -259,10 +259,10 @@
             case 2:
                 icon = 'error';
                 title = 'Are you sure?';
-                text = "Permanently Remove Record...!";
-                confirmButtonText = 'Remove';
-                successtitle = 'Deleted';
-                successttext = 'Record Permanently Removed Successfully....!';
+                text = "Move This Record To Trash (reversible)!";
+                confirmButtonText = 'Move To Trash';
+                successtitle = 'Trashed';
+                successttext = 'Record Moved To Trash Successfully....!';
                 break;
             default:
                 icon = 'warning';

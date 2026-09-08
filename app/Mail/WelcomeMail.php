@@ -13,10 +13,12 @@ class WelcomeMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
+    public string $messageContent;
+
     /**
      * Create a new message instance.
      */
-    public function __construct($messageContent)
+    public function __construct(string $messageContent)
     {
         $this->messageContent = $messageContent;
     }
@@ -27,7 +29,7 @@ class WelcomeMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Welcome to Labridge',
+            subject: 'Welcome to the Admin Dashboard',
         );
     }
 

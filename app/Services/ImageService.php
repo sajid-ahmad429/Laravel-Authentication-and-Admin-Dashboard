@@ -34,22 +34,35 @@ class ImageService
         int $maxHeight = 500,
         int $quality = 80
     ): string {
-        $filename = Str::uuid() . '.webp';
-        $destinationPath = "public/{$folder}/" . $filename;
+        if (! $file->isValid()) {
+            throw new \InvalidArgumentException('The uploaded file is invalid.');
+        }
 
-        // Process image using Intervention Image v3
-        $image = $this->manager->read($file->getRealPath());
+        // Restrict storage to a safe folder name (no traversal).
+        $folder = trim($folder, '/');
+        if ($folder === '' || ! preg_match('#^[A-Za-z0-9_\-/]+$#', $folder) || str_contains($folder, '..')) {
+            throw new \InvalidArgumentException('Invalid storage folder.');
+        }
 
-        // Scale/crop down while maintaining aspect ratio
-        $image->cover($maxWidth, $maxHeight);
+        $filename = Str::uuid().'.webp';
+        $destinationPath = "public/{$folder}/".$filename;
 
-        // Encode to WebP format
-        $encoded = $image->toWebp($quality);
+        try {
+            // Process image using Intervention Image v3
+            $image = $this->manager->read($file->getRealPath());
 
-        // Ensure storage folder exists and save file
-        Storage::put($destinationPath, (string) $encoded);
+            // Scale/crop down while maintaining aspect ratio
+            $image->cover($maxWidth, $maxHeight);
 
-        return "storage/{$folder}/" . $filename;
+            // Encode to WebP format
+            $encoded = $image->toWebp($quality);
+
+            Storage::put($destinationPath, (string) $encoded);
+        } catch (\Throwable $e) {
+            throw new \RuntimeException('Could not process the uploaded image: '.$e->getMessage(), 0, $e);
+        }
+
+        return "storage/{$folder}/".$filename;
     }
 
     /**

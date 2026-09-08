@@ -2,31 +2,24 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\User;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class UserController extends Controller
 {
-    protected User $users;
-
-    public function __construct(User $users)
-    {
-        $this->users = $users;
-        date_default_timezone_set('Asia/Kolkata');
-    }
-
     public function index()
     {
-        if (!session()->has('isLoggedIn')) {
-            return redirect()->to('sysCtrlLogin');
+        if (! session()->has('isLoggedIn') && ! auth()->check()) {
+            return redirect()->route('login');
         }
 
-        $data['activeMenu'] = "users";
+        $data['activeMenu'] = 'users';
         $data['assetsJs'] = ['app-user-list'];
 
         $data['active'] = Cache::remember('count_active', 120, function () {
@@ -47,92 +40,142 @@ class UserController extends Controller
     public function store(Request $request): JsonResponse
     {
         $userId = $request->input('user_id');
-        $isUpdating = $request->has('user_id') && !empty($userId) && $userId != 0;
+        $isUpdating = $request->filled('user_id') && (int) $userId !== 0;
+
+        // Normalize the role before validation so "Admin" matches the "admin" record.
+        if ($request->filled('user-role')) {
+            $request->merge(['user-role' => strtolower(trim((string) $request->input('user-role')))]);
+        }
 
         $rules = [
-            'userFullname' => ['required', 'string', 'max:255', 'regex:/^[a-zA-Z\s\-]+$/'],
-            'userEmail'    => ['required', 'email', $isUpdating ? 'unique:users,email,' . $userId : 'unique:users,email'],
-            'userContact'  => ['required', 'string', 'max:10', $isUpdating ? 'unique:users,contact_no,' . $userId : 'unique:users,contact_no'],
-            'companyName'  => ['nullable', 'string', 'max:150'],
-            'country'      => ['nullable', 'string', 'max:100'],
-            'user-role'    => ['nullable', 'string', 'max:50'],
-            'user-plan'    => ['nullable', 'string', 'max:50'],
+            'userFullname' => ['required', 'string', 'max:255', 'regex:/^[\pL\s\-\.\']+$/u'],
+            'userEmail' => ['required', 'email', 'max:255', $isUpdating ? 'unique:users,email,'.$userId : 'unique:users,email'],
+            'userContact' => ['required', 'string', 'max:15', $isUpdating ? 'unique:users,contact_no,'.$userId : 'unique:users,contact_no'],
+            'companyName' => ['nullable', 'string', 'max:150'],
+            'country' => ['nullable', 'string', 'max:100'],
+            'user-role' => ['nullable', 'string', 'max:50', 'exists:roles,name'],
+            'user-plan' => ['nullable', 'string', 'max:50'],
         ];
 
         $validator = Validator::make($request->all(), $rules);
 
         if ($validator->fails()) {
             return response()->json([
-                'status'  => 0,
+                'status' => 0,
                 'message' => 'Validation error occurred.',
-                'errors'  => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
+        }
+
+        $roleInput = $request->input('user-role');
+        $actorRole = strtolower((string) session('role', ''));
+
+        // Only a superadmin may grant the superadmin role.
+        if (! empty($roleInput) && $roleInput === 'superadmin' && $actorRole !== 'superadmin') {
+            return response()->json([
+                'status' => 0,
+                'message' => 'Only a superadmin can assign the superadmin role.',
+            ], 403);
         }
 
         DB::beginTransaction();
         try {
-            $roleInput = $request->input('user-role');
-
             $data = [
-                'name'         => $request->input('userFullname'),
-                'email'        => $request->input('userEmail'),
-                'contact_no'   => $request->input('userContact'),
+                'name' => $request->input('userFullname'),
+                'email' => $request->input('userEmail'),
+                'contact_no' => $request->input('userContact'),
                 'company_name' => $request->input('companyName'),
-                'country'      => $request->input('country'),
-                'plan'         => $request->input('user-plan'),
+                'country' => $request->input('country'),
+                'plan' => $request->input('user-plan'),
             ];
 
             if ($isUpdating) {
                 $user = User::find($userId);
-                if (!$user) {
+
+                if (! $user) {
                     DB::rollBack();
-                    return response()->json(['status' => 0, 'message' => 'Target user footprint not found.'], 442);
+
+                    return response()->json(['status' => 0, 'message' => 'Target user not found.'], 404);
+                }
+
+                // Only a superadmin may modify another superadmin account.
+                if ($this->isSuperAdmin($user) && $actorRole !== 'superadmin') {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'status' => 0,
+                        'message' => 'Only a superadmin can modify a superadmin account.',
+                    ], 403);
+                }
+
+                if (! empty($roleInput)) {
+                    $data['roles'] = $roleInput;
                 }
 
                 $user->update($data);
 
-                if (!empty($roleInput)) {
-                    $user->syncRoles([strtolower($roleInput)]);
+                if (! empty($roleInput)) {
+                    $user->syncRoles([$roleInput]);
                 }
 
                 DB::commit();
-                $this->clearUserCache($userId);
+                $this->clearUserCache((int) $user->id);
 
                 return response()->json(['status' => 1, 'message' => 'Record Details Updated Successfully']);
-            } else {
-                $data['password'] = bcrypt('Smart@#123');
-                $newUser = User::create($data);
-
-                if (!empty($roleInput)) {
-                    $newUser->syncRoles([strtolower($roleInput)]);
-                }
-
-                DB::commit();
-                $this->clearUserCache();
-
-                return response()->json(['status' => 1, 'message' => 'Record Details Added Successfully']);
             }
-        } catch (\Exception $e) {
+
+            // New users created by an admin are pre-vetted: activate immediately
+            // with a random one-time password (returned once so the admin can
+            // share it; the user should change it after first login).
+            // NOTE: plaintext assignment — the model's `hashed` cast hashes it.
+            $tempPassword = Str::random(12);
+            $data['password'] = $tempPassword;
+            $data['activated'] = 1;
+            $data['status'] = 1;
+            $data['trash'] = 0;
+
+            if (! empty($roleInput)) {
+                $data['roles'] = $roleInput;
+            }
+
+            $newUser = User::create($data);
+
+            if (! empty($roleInput)) {
+                $newUser->syncRoles([$roleInput]);
+            }
+
+            DB::commit();
+            $this->clearUserCache();
+
+            return response()->json([
+                'status' => 1,
+                'message' => 'Record Details Added Successfully',
+                'temp_password' => $tempPassword,
+            ]);
+        } catch (\Throwable $e) {
             DB::rollBack();
-            \Log::error('Error tracking inside creation/update pipeline: ' . $e->getMessage());
-            return response()->json(['status' => 0, 'message' => 'Critical database layer transaction exception.'], 500);
+            Log::error('User store/update failed: '.$e->getMessage(), ['user_id' => $userId]);
+
+            return response()->json(['status' => 0, 'message' => 'Could not save the user. Please try again.'], 500);
         }
     }
 
     public function getTableData(Request $request): JsonResponse
     {
-        if (!$request->ajax()) {
+        if (! $request->ajax()) {
             return response()->json(['status' => 0, 'message' => 'Invalid Request'], 400);
         }
 
         $validated = $request->validate([
-            'draw'           => ['required', 'integer'],
-            'start'          => ['required', 'integer', 'min:0'],
-            'length'         => ['required', 'integer', 'min:1', 'max:100'],
-            'search.value'   => ['nullable', 'string', 'max:100'],
-            'order'          => ['nullable', 'array'],
+            'draw' => ['required', 'integer'],
+            'start' => ['required', 'integer', 'min:0'],
+            'length' => ['required', 'integer', 'min:1', 'max:100'],
+            'search.value' => ['nullable', 'string', 'max:100'],
+            'order' => ['nullable', 'array'],
             'order.*.column' => ['required', 'integer'],
-            'order.*.dir'    => ['required', 'in:asc,desc'],
+            'order.*.dir' => ['required', 'in:asc,desc'],
+            'trash_filter' => ['nullable', 'in:0,1'],
+            'status_filter' => ['nullable', 'in:0,1,2'],
         ]);
 
         $columnMap = [
@@ -142,10 +185,9 @@ class UserController extends Controller
             3 => 'roles',
             4 => 'plan',
             5 => 'country',
-            6 => 'status'
+            6 => 'status',
         ];
 
-        // Base query setup (Searchable columns select me daal diye taaki crash na ho)
         $query = User::query()->select([
             'id',
             'name',
@@ -156,60 +198,53 @@ class UserController extends Controller
             'status',
             'trash',
             'contact_no',
-            'company_name'
+            'company_name',
         ]);
 
-        // 1. Pehle tab/trash filter apply karein
-        $trashFilter = $request->has('trash_filter') ? intval($request->input('trash_filter')) : 0;
+        $trashFilter = (int) ($validated['trash_filter'] ?? 0);
         $query->where('trash', $trashFilter);
 
-        // 2. Custom status filter apply karein
-        if ($request->has('status_filter') && $request->input('status_filter') !== '') {
-            $query->where('status', $request->input('status_filter'));
+        if (isset($validated['status_filter']) && $validated['status_filter'] !== '') {
+            $query->where('status', $validated['status_filter']);
         }
 
-        // High-volume performance optimization: Cache total records count for 2 minutes to prevent heavy COUNT(*) queries
-        $recordsTotal = Cache::remember("dt_total_users_trash_{$trashFilter}_status_" . ($request->input('status_filter', 'all')), 120, function () use ($query) {
-            return (clone $query)->count();
-        });
+        // Intentionally uncached: the indexed COUNT(*) is cheap, and caching
+        // per filter-combination previously served stale totals (the cache
+        // keys were never invalidated on write).
+        $recordsTotal = (clone $query)->count();
 
-        // 3. Ab global search keyword filter apply karein
-        if (!empty($validated['search']['value'])) {
-            $search = $validated['search']['value'];
-            $query->where(function ($sub) use ($search) {
-                $sub->where('name', 'LIKE', "{$search}%")
-                    ->orWhere('email', 'LIKE', "{$search}%")
-                    ->orWhere('contact_no', 'LIKE', "{$search}%")
-                    ->orWhere('company_name', 'LIKE', "{$search}%");
+        $searchValue = $validated['search']['value'] ?? null;
+        if (! empty($searchValue)) {
+            $query->where(function ($sub) use ($searchValue) {
+                $sub->where('name', 'LIKE', "{$searchValue}%")
+                    ->orWhere('email', 'LIKE', "{$searchValue}%")
+                    ->orWhere('contact_no', 'LIKE', "{$searchValue}%")
+                    ->orWhere('company_name', 'LIKE', "{$searchValue}%");
             });
         }
 
-        // ⭐ STEP 2: Yeh search filter lagne ke baad ka total hai (e.g. 15)
-        $recordsFiltered = $query->count();
+        $recordsFiltered = (clone $query)->count();
 
-        // Dashboard counters calculation
         $aggregateData = DB::table('users')
-            ->selectRaw("
+            ->selectRaw('
             COUNT(CASE WHEN status = 1 AND trash = 0 THEN 1 END) as active_count,
             COUNT(CASE WHEN status = 0 AND trash = 0 THEN 1 END) as inactive_count,
             COUNT(CASE WHEN trash = 1 THEN 1 END) as trashed_count
-        ")->first();
+        ')->first();
 
-        // Sorting Logic
-        $sortColumnIndex = isset($validated['order'][0]['column']) ? $validated['order'][0]['column'] : 0;
-        $sortDirection = isset($validated['order'][0]['dir']) ? $validated['order'][0]['dir'] : 'desc';
+        $sortColumnIndex = $validated['order'][0]['column'] ?? 0;
+        $sortDirection = $validated['order'][0]['dir'] ?? 'desc';
         $sortColumn = $columnMap[$sortColumnIndex] ?? 'id';
         $query->orderBy($sortColumn, $sortDirection);
 
-        // Pagination Limit Apply
         $users = $query->skip($validated['start'])->take($validated['length'])->get();
 
         $data = [];
         foreach ($users as $user) {
-            $encodedId = base64_encode($user->id);
+            $encodedId = base64_encode((string) $user->id);
 
-            if ($user->trash == 1) {
-                $actionButtons = '<button class="btn btn-sm btn-success btn-restore" data-id="' . $encodedId . '"> <i class="mdi mdi-restore me-1"></i> Restore </button>';
+            if ((int) $user->trash === 1) {
+                $actionButtons = '<button class="btn btn-sm btn-success btn-restore" data-id="'.$encodedId.'"> <i class="mdi mdi-restore me-1"></i> Restore </button>';
             } else {
                 $actionButtons = '
                 <div class="dropdown">
@@ -217,133 +252,163 @@ class UserController extends Controller
                         <i class="mdi mdi-dots-vertical"></i>
                     </button>
                     <div class="dropdown-menu">
-                        <a class="dropdown-item edit-user-btn" href="javascript:void(0);" data-id="' . $encodedId . '"><i class="mdi mdi-pencil-outline me-1"></i> Edit</a>
-                        <a class="dropdown-item btn-trash text-danger" href="javascript:void(0);" data-id="' . $encodedId . '"><i class="mdi mdi-trash-can-outline me-1"></i> Trash</a>
+                        <a class="dropdown-item edit-user-btn" href="javascript:void(0);" data-id="'.$encodedId.'"><i class="mdi mdi-pencil-outline me-1"></i> Edit</a>
+                        <a class="dropdown-item btn-trash text-danger" href="javascript:void(0);" data-id="'.$encodedId.'"><i class="mdi mdi-trash-can-outline me-1"></i> Trash</a>
                     </div>
                 </div>';
             }
 
-            $statusBadge = $user->status == 1
+            $statusBadge = (int) $user->status === 1
                 ? '<span class="badge bg-label-success">ACTIVE</span>'
                 : '<span class="badge bg-label-secondary">INACTIVE</span>';
 
             $data[] = [
-                'id'           => $user->id,
-                'full_name'    => ucwords(e($user->name)),
-                'email'        => e($user->email),
-                'role'         => '<span class="text-warning"><i class="mdi mdi-cog-outline me-1"></i>' . (ucwords(e($user->roles)) ?: '-') . '</span>',
-                'current_plan' => ucwords(e($user->plan)) ?: '-',
-                'country'      => e($user->country) ?: '-',
-                'status'       => $statusBadge,
-                'actions'      => '<div class="text-center">' . $actionButtons . '</div>'
+                'id' => $user->id,
+                'full_name' => ucwords(e($user->name)),
+                'email' => e($user->email),
+                'role' => '<span class="text-warning"><i class="mdi mdi-cog-outline me-1"></i>'.(ucwords(e((string) $user->roles)) ?: '-').'</span>',
+                'current_plan' => ucwords(e((string) $user->plan)) ?: '-',
+                'country' => e((string) $user->country) ?: '-',
+                'status' => $statusBadge,
+                'actions' => '<div class="text-center">'.$actionButtons.'</div>',
             ];
         }
 
         return response()->json([
-            'draw'                => intval($validated['draw']),
-            'recordsTotal'        => $recordsTotal,        // Dynamic Total Count 
-            'recordsFiltered'     => $recordsFiltered,     // Filtered Count
-            'totalActiveRecods'   => $aggregateData->active_count ?? 0,
+            'draw' => (int) $validated['draw'],
+            'recordsTotal' => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'totalActiveRecods' => $aggregateData->active_count ?? 0,
             'totalInActiveRecods' => $aggregateData->inactive_count ?? 0,
-            'totalTrashedRecods'  => $aggregateData->trashed_count ?? 0,
-            'data'                => $data
+            'totalTrashedRecods' => $aggregateData->trashed_count ?? 0,
+            'data' => $data,
         ]);
     }
 
-
     public function getUserDetails(Request $request): JsonResponse
     {
-        if ($request->has('id') && !empty($request->input('id'))) {
-            try {
-                $id = base64_decode($request->input('id'), true);
-                if (!$id) {
-                    throw new \InvalidArgumentException("Invalid payload encryption signature.");
-                }
+        $validator = Validator::make($request->all(), [
+            'id' => ['required', 'string', 'max:32'],
+        ]);
 
-                $cacheKey = "user_details_{$id}";
-                $usersData = Cache::remember($cacheKey, 300, function () use ($id) {
-                    return User::where('id', $id)->first();
-                });
-
-                if ($usersData) {
-                    $responseData = $usersData->toArray();
-                    unset($responseData['password'], $responseData['remember_token']);
-                    $responseData['status'] = 1;
-                    $responseData['acftkn'] = ['acftkname' => csrf_token(), 'acftknhs'  => csrf_token()];
-                    return response()->json($responseData);
-                }
-                return response()->json(['status' => 2, 'message' => "Requested record not found."], 442);
-            } catch (\Exception $e) {
-                return response()->json(['status' => 0, 'message' => "Decryption failure."], 400);
-            }
+        if ($validator->fails()) {
+            return response()->json(['status' => 0, 'message' => 'Parameters missing.'], 422);
         }
-        return response()->json(['status' => 2, 'message' => "Parameters missing."], 400);
+
+        $id = base64_decode($request->input('id'), true);
+
+        if ($id === false || ! ctype_digit((string) $id)) {
+            return response()->json(['status' => 0, 'message' => 'Invalid user reference.'], 422);
+        }
+
+        $usersData = Cache::remember("user_details_{$id}", 300, function () use ($id) {
+            return User::where('id', $id)->first();
+        });
+
+        if (! $usersData) {
+            return response()->json(['status' => 0, 'message' => 'Requested record not found.'], 404);
+        }
+
+        // toArray() respects $hidden, so password / tokens are never exposed.
+        return response()->json(array_merge($usersData->toArray(), ['status' => 1]));
     }
 
     public function toggleTrash(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            'id' => ['required', 'string', 'max:32'],
+            'action_type' => ['required', 'in:0,1'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 0,
+                'message' => 'Validation error occurred.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $id = base64_decode($request->input('id'), true);
+
+        if ($id === false || ! ctype_digit((string) $id)) {
+            return response()->json(['status' => 0, 'message' => 'Invalid user reference.'], 422);
+        }
+
+        $user = User::find($id);
+
+        if (! $user) {
+            return response()->json(['status' => 0, 'message' => 'Target user not found.'], 404);
+        }
+
+        // Nobody can trash their own account.
+        if ((int) $user->id === (int) session('id', 0)) {
+            return response()->json(['status' => 0, 'message' => 'You cannot move your own account to trash.'], 403);
+        }
+
+        // Only a superadmin may trash/restore a superadmin account.
+        if ($this->isSuperAdmin($user) && strtolower((string) session('role', '')) !== 'superadmin') {
+            return response()->json(['status' => 0, 'message' => 'Only a superadmin can modify a superadmin account.'], 403);
+        }
+
+        $targetAction = (int) $request->input('action_type');
+
+        DB::beginTransaction();
         try {
-            $id = base64_decode($request->input('id'), true);
+            $previousData = ['trash' => $user->trash];
 
-            $user = User::findOrFail($id);
-
-            $targetAction = (int) $request->input('action_type', 0);
-
-            DB::beginTransaction();
-
-            $previousData = [
-                'trash' => $user->trash,
-            ];
-
-            $user->update([
-                'trash' => $targetAction,
-            ]);
+            $user->update(['trash' => $targetAction]);
 
             if (function_exists('track_activity')) {
-                track_activity(
-                    $previousData,
-                    $this->users,
-                    [
-                        'trash' => $targetAction,
-                    ],
-                    $id,
-                    'users',
-                    1
-                );
+                track_activity($previousData, $user, ['trash' => $targetAction], $user->id, 'users', 1);
             }
 
             DB::commit();
 
-            $this->clearUserCache($id);
-
-            $message = $targetAction === 1
-                ? 'Record dropped into trash logs safely.'
-                : 'Record trace restored back successfully.';
+            $this->clearUserCache($user->id);
 
             return response()->json([
-                'status'  => 1,
-                'message' => $message,
+                'status' => 1,
+                'message' => $targetAction === 1
+                    ? 'Record moved to trash successfully.'
+                    : 'Record restored successfully.',
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
+            Log::error('Toggle trash failed: '.$e->getMessage(), ['user_id' => $user->id]);
 
             return response()->json([
-                'status'  => 0,
-                'message' => 'State processing system transaction failure.',
+                'status' => 0,
+                'message' => 'Could not update the record. Please try again.',
             ], 500);
         }
     }
 
-    private function clearUserCache(?int $userId = null): void
+    /**
+     * Check whether the given user holds the superadmin role (Spatie or legacy column).
+     */
+    protected function isSuperAdmin(User $user): bool
+    {
+        try {
+            if ($user->hasRole('superadmin')) {
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // Fall through to the legacy column check.
+        }
+
+        return strtolower((string) $user->getAttribute('roles')) === 'superadmin';
+    }
+
+    protected function clearUserCache(?int $userId = null): void
     {
         Cache::forget('count_active');
         Cache::forget('count_inactive');
         Cache::forget('count_total');
-        Cache::forget('dt_total_base');
         Cache::forget('users_all_count');
         Cache::forget('users_inactive_count');
         Cache::forget('users_active_count');
         Cache::forget('users_list_data');
+        Cache::forget('analytics_summary_metrics');
 
         if ($userId) {
             Cache::forget("user_details_{$userId}");

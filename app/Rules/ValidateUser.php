@@ -33,7 +33,7 @@ class ValidateUser implements ValidationRule
 
             $user = User::where('email', $email)->first();
 
-            if ($user && !password_verify($value, $user->password)) {
+            if ($user && !Hash::check($value, $user->password)) {
                 $fail('The provided password is incorrect.');
             }
         }

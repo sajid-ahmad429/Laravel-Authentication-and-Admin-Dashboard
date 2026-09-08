@@ -12,16 +12,19 @@ class AuthModel extends Model
     use HasFactory;
     protected $table = 'users';
 
+    /**
+     * The attributes that are mass assignable.
+     *
+     * NOTE: `id` and the token columns are intentionally NOT mass assignable.
+     * Tokens are written via forceFill() inside AuthLibrary::generateToken().
+     *
+     * @var array<int, string>
+     */
     protected $fillable = [
-        'id',
         'name',
         'email',
         'password',
-        'reset_token',
-        'reset_expire',
         'activated',
-        'activate_token',
-        'activate_expire',
         'roles',
         'updated_at',
         'deleted_at'
@@ -33,28 +36,22 @@ class AuthModel extends Model
         'activate_token'
     ];
 
-    // Password hashing on create & update
+    // Hash plaintext passwords on create & update (only when actually changed).
     public static function boot()
     {
         parent::boot();
 
         static::creating(function ($model) {
-            $model->password = $model->passwordHash($model->password);
+            if (! empty($model->password) && ! Hash::isHashed($model->password)) {
+                $model->password = Hash::make($model->password);
+            }
         });
 
         static::updating(function ($model) {
-            if (isset($model->password)) {
-                $model->password = $model->passwordHash($model->password);
+            if ($model->isDirty('password') && ! Hash::isHashed($model->password)) {
+                $model->password = Hash::make($model->password);
             }
         });
-    }
-
-    protected function passwordHash($password)
-    {
-        if (!Hash::needsRehash($password)) {
-            return $password;
-        }
-        return Hash::make($password);
     }
 
     // Verify user login credentials

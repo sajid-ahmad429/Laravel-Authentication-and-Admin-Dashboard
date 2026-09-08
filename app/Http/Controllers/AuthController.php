@@ -2,96 +2,102 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Models\User;
-use App\Models\AuthModel;
 use App\Libraries\AuthLibrary;
-use Illuminate\Support\Facades\Session;
-use Illuminate\Support\Facades\Redirect;
-use Illuminate\Support\Facades\Validator;
+use App\Models\AuthModel;
+use App\Models\User;
+use App\Rules\ValidateUser;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use App\Rules\ValidateUser;
-use App\Jobs\SendActivationEmailJob;
+use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
-    protected $usersModel;
-    protected $authModel;
-    protected $session;
-    protected $authLibrary;
-    protected $config;
+    protected User $usersModel;
+    protected AuthModel $authModel;
+    protected AuthLibrary $authLibrary;
+    protected array $config;
+
+    /**
+     * Session key proving a reset link was verified. The password update form
+     * (GET and POST) refuses to run unless this matches the requested id, so
+     * attackers cannot reset arbitrary accounts by guessing /updatepassword/{id}.
+     */
+    public const RESET_SESSION_KEY = 'password_reset_verified_id';
 
     public function __construct()
     {
         $this->authModel = new AuthModel();
         $this->usersModel = new User();
-        $this->session = session();
         $this->authLibrary = new AuthLibrary();
         $this->config = config('auth');
     }
 
     public function index()
     {
-        // Redirect to the named login route if defined, else URL path
-        return redirect()->to('sysCtrlLogin');
+        return redirect()->route('login');
     }
 
     /**
-     * Handle User Login Process (Production Grade)
+     * Handle the user login process.
      */
     public function login(Request $request)
     {
         try {
             $viewData['config'] = $this->config;
-            $viewData['errorMessage'] = '';
 
-            // 1. Check and process Remember Me cookie if present
+            // Restore a session from a valid remember-me cookie, if present.
             $this->authLibrary->checkCookie();
 
-            // 2. Redirect if already authenticated based on role
             if (Session::has('isLoggedIn')) {
                 return redirect()->to($this->authLibrary->autoRedirect());
             }
 
-            // 3. Handle POST request
             if ($request->isMethod('post')) {
-                $rules = [
-                    'email'    => ['required', 'email'],
-                    'password' => ['required', 'string'],
-                ];
-
-                $validator = Validator::make($request->all(), $rules);
+                $validator = Validator::make($request->all(), [
+                    'email' => ['required', 'email', 'max:255'],
+                    'password' => ['required', 'string', 'max:255'],
+                ]);
 
                 if ($validator->fails()) {
-                    $this->authLibrary->loginlogFail($request->input('email', 'unknown'));
+                    $this->authLibrary->loginlogFail(
+                        (string) $request->input('email', 'unknown'),
+                        'Validation failed'
+                    );
+
                     return redirect()->back()->withErrors($validator)->withInput($request->except('password'));
                 }
 
-                $email = $request->input('email');
-                $password = $request->input('password');
-                $rememberMe = $request->has('rememberme');
+                $email = (string) $request->input('email');
+                $password = (string) $request->input('password');
+                $rememberMe = $request->boolean('rememberme');
 
-                // 4. Fetch user securely
                 $user = User::where('email', $email)->first();
 
-                // 5. Security check: Validate user existence, password match, and activation status
-                if (!$user || !Hash::check($password, $user->password) || $user->activated != 1) {
+                if (! $user || ! Hash::check($password, $user->password)) {
                     $this->authLibrary->loginlogFail($email);
 
                     return redirect()->back()
                         ->withInput($request->except('password'))
-                        ->with('danger', __('auth.failed') ?: 'Invalid credentials or account not activated.');
+                        ->with('danger', __('auth.failed'));
                 }
 
-                // 6. Attempt login via AuthLibrary (Manages session and redirection)
-                return $this->authLibrary->Loginuser($email, $rememberMe);
+                if ((int) $user->activated !== 1) {
+                    $this->authLibrary->loginlogFail($email, 'Account not activated');
+
+                    return redirect()->back()
+                        ->withInput($request->except('password'))
+                        ->with('danger', __('Your account is not activated. Please check your e-mail for the activation link.'))
+                        ->with('resetlink', '<a href="'.route('resend.activation', $user->id).'">Resend Activation Email</a>');
+                }
+
+                return $this->authLibrary->loginUser($email, $rememberMe);
             }
 
-            // Return the secure login view
             return view('admin.auth.login', $viewData);
-        } catch (\Exception $e) {
-            Log::error('Login Error: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('Login error: '.$e->getMessage());
 
             return redirect()->back()
                 ->withInput($request->except('password'))
@@ -104,58 +110,44 @@ class AuthController extends Controller
       | REGISTER USER
       |--------------------------------------------------------------------------
       |
-      | Get post data from register.php view
-      | Set and Validate rules
-      | pass over to library RegisterUser
-      | If successfull save user details to DB
-      | check if we should send activation email
-      | return true / false
+      | Validates the registration form and delegates creation to AuthLibrary,
+      | which assigns the default low-privilege role and sends activation mail.
       |
     */
-
-    // User Registration Method
     public function register(Request $request)
     {
         if ($request->isMethod('post')) {
-            // Define Validation Rules
-            $rules = [
-                'username' => 'required|min:3|max:25',
-                'email' => 'required|email|unique:users,email',
+            $validator = Validator::make($request->all(), [
+                'username' => ['required', 'string', 'min:3', 'max:25'],
+                'email' => ['required', 'email', 'max:255', 'unique:users,email'],
                 'password' => [
                     'required',
                     'string',
                     'min:8',
-                    'regex:/[a-z]/',       // At least one lowercase letter
-                    'regex:/[A-Z]/',       // At least one uppercase letter
-                    'regex:/[0-9]/',       // At least one number
-                    'regex:/[@$!%*?&]/',   // At least one special character
+                    'max:72',
+                    'regex:/[a-z]/',
+                    'regex:/[A-Z]/',
+                    'regex:/[0-9]/',
+                    'regex:/[@$!%*?&]/',
                 ],
-            ];
+                'terms' => ['accepted'],
+            ]);
 
-            // Validate the request
-            $validator = Validator::make($request->all(), $rules);
-
-            // Check if validation fails
             if ($validator->fails()) {
-                return redirect()->back()->withErrors($validator)->withInput();  // Return with errors
+                return redirect()->back()->withErrors($validator)->withInput();
             }
 
-            // Set User Data
-            $userData = [
+            $created = $this->authLibrary->registerUser([
                 'name' => $request->input('username'),
                 'email' => $request->input('email'),
                 'password' => $request->input('password'),
-            ];
+            ]);
 
-            // Save User to Database
-            $user = $this->authLibrary->RegisterUser($userData);
-
-            // Check If User is Created Successfully
-            if ($user) {
+            if ($created) {
                 return redirect()->route('login')->with('success', 'Registration successful. Please check your email and activate your account to complete verification.');
-            } else {
-                return back()->with('error', 'Failed to register. Please try again.');
             }
+
+            return redirect()->back()->with('danger', 'Failed to register. Please try again.')->withInput();
         }
 
         return view('admin.auth.register');
@@ -165,205 +157,193 @@ class AuthController extends Controller
       |--------------------------------------------------------------------------
       | RESEND ACTIVATION EMAIL
       |--------------------------------------------------------------------------
-      |
-      | If user needs to resend activation email
-      |
-     */
-
-    public function resendactivation($id)
+    */
+    public function resendActivation($id)
     {
+        $decodedId = AuthLibrary::decodeId($id) ?? (is_numeric($id) ? (int) $id : null);
 
-        // PASS TO LIBRARY
-        $this->authLibrary->ResendActivation($id);
+        if ($decodedId === null) {
+            return redirect()->route('login')->with('danger', __('auth.error_occurred'));
+        }
 
-        return redirect()->to('sysCtrlLogin');
+        $this->authLibrary->resendActivation($decodedId);
+
+        return redirect()->route('login');
     }
 
     /*
       |--------------------------------------------------------------------------
-      | RESEND ACTIVATION EMAIL
+      | SEND ACTIVATION LINK (AJAX, admin user list)
       |--------------------------------------------------------------------------
       |
-      | If user needs to resend activation email
+      | Responds with a plain "1" on success and "0" on failure to match the
+      | existing SweetAlert flow in the admin templates.
       |
-     */
-
+    */
     public function sendActivationLink($id)
     {
-        $decodedId = base64_decode($id);
-        // // PASS TO LIBRARY
-        $result = $this->authLibrary->ResendActivation($decodedId);
-        if ($result) {
-            return true;
-        } else {
-            return false;
+        $decodedId = AuthLibrary::decodeId($id);
+
+        if ($decodedId === null) {
+            return response('0', 422);
         }
+
+        $user = User::find($decodedId);
+
+        if (! $user || (int) $user->activated === 1) {
+            return response('0', 422);
+        }
+
+        return $this->authLibrary->resendActivation($decodedId)
+            ? response('1')
+            : response('0', 422);
     }
-    
+
     /*
       |--------------------------------------------------------------------------
       | ACTIVATE USER
       |--------------------------------------------------------------------------
       |
-      | Activate user account from email link
+      | Handles account activation from the e-mail link.
       |
     */
-
     public function activateUser($id, $token)
     {
-        // PASS TO LIBRARY
-        $this->authLibrary->activateuser($id, $token);
-        return redirect()->to('/');
+        $this->authLibrary->activateUser($id, $token);
+
+        return redirect()->route('login');
     }
 
     /*
       |--------------------------------------------------------------------------
-      | REGISTER USER
+      | FORGOT PASSWORD
       |--------------------------------------------------------------------------
-      |
-      | Get post data from forgotpassword.php view
-      | Set and Validate rules
-      | Save to DB
-      | Set session data
-      |
     */
-
     public function forgotPassword(Request $request)
     {
         if ($request->isMethod('post')) {
-            // SET UP VALIDATION RULES
-            $rules = [
-                'email' => ['required', 'email', new ValidateUser],
-            ];
+            $validator = Validator::make($request->all(), [
+                'email' => ['required', 'email', 'max:255', new ValidateUser],
+            ], [
+                'email.required' => __('auth.noUser'),
+            ]);
 
-            // SET UP CUSTOM ERROR MESSAGES
-            $messages = [
-                'email.exists' => __('auth.noUser'), // Equivalent to lang('Auth.noUser')
-            ];
-
-            // VALIDATE REQUEST
-            $validator = Validator::make($request->all(), $rules, $messages);
-
-            // CHECK VALIDATION
             if ($validator->fails()) {
                 return back()->withErrors($validator)->withInput();
-            } else {
-                $this->authLibrary->ForgotPassword($request->input('email'));
             }
+
+            $this->authLibrary->forgotPassword((string) $request->input('email'));
+
+            return back()->with('success', __('auth.resetSent'));
         }
-        // RENDER THE VIEW
+
         return view('admin.auth.forgotpassword');
     }
 
     /*
       |--------------------------------------------------------------------------
-      | RESET PASSWORD
+      | RESET PASSWORD (verify link)
       |--------------------------------------------------------------------------
       |
-      | Takes the response from a a rest link from users reset email
-      | Pass the user id and token to Library resetPassword();
+      | Validates the reset link and, on success, stores a one-time session
+      | marker authorizing the password update form for this user only.
       |
     */
-
     public function resetPassword($id, $token)
     {
-        // PASS TO LIBRARY
         $userId = $this->authLibrary->resetPassword($id, $token);
 
-        if (!$userId) {
+        if (! $userId) {
             return redirect()->route('login');
         }
 
-        // Redirect to the updatePassword route
+        session([self::RESET_SESSION_KEY => (int) $userId]);
+
         return redirect()->route('password.update', ['id' => $userId]);
     }
-
 
     /*
       |--------------------------------------------------------------------------
       | UPDATE PASSWORD
       |--------------------------------------------------------------------------
       |
-      | Get post data from resetpassword.php view
-      | Save new password to DB
+      | Renders / processes the new-password form. Both GET and POST require
+      | the session marker issued by resetPassword(), preventing attackers
+      | from resetting arbitrary accounts by guessing the numeric id.
       |
     */
-
     public function updatePassword(Request $request, $id)
     {
-        // Check if the method is POST
+        $verifiedId = session(self::RESET_SESSION_KEY);
+
+        if (! $verifiedId || (int) $id !== (int) $verifiedId) {
+            return redirect()->route('login')->with('danger', __('auth.invalidToken'));
+        }
+
         if ($request->isMethod('post')) {
-            // Set validation rules
-            $rules = [
+            $validator = Validator::make($request->all(), [
                 'password' => [
                     'required',
                     'string',
                     'min:8',
-                    'regex:/[a-z]/',       // At least one lowercase letter
-                    'regex:/[A-Z]/',       // At least one uppercase letter
-                    'regex:/[0-9]/',       // At least one number
-                    'regex:/[@$!%*?&]/',   // At least one special character
+                    'max:72',
+                    'regex:/[a-z]/',
+                    'regex:/[A-Z]/',
+                    'regex:/[0-9]/',
+                    'regex:/[@$!%*?&]/',
                 ],
-                'confirm-password' => 'required|same:password', // Ensure passwords match
-            ];
-
-            // Validate the request
-            $validator = Validator::make($request->all(), $rules);
+                'confirm-password' => ['required', 'same:password'],
+            ]);
 
             if ($validator->fails()) {
-                return back()
-                    ->withErrors($validator)
-                    ->withInput();
+                return back()->withErrors($validator)->withInput();
             }
 
-            // Validation passed, update the user password
-            $user = AuthModel::where('id', $id)->first();
+            $user = AuthModel::where('id', $verifiedId)->first();
 
-            if (!$user) {
-                return redirect()->back()->with('danger', __('User not found.'));
+            if (! $user) {
+                session()->forget(self::RESET_SESSION_KEY);
+
+                return redirect()->route('login')->with('danger', __('auth.userNotFound'));
             }
 
-            $user->password = $request->input('password');
-            $user->reset_expire = null; // Clear reset expiry
-            $user->reset_token = null;  // Clear reset token
+            // Plaintext assignment: AuthModel hashes it via its model hook.
+            $user->password = (string) $request->input('password');
+            $user->reset_expire = null;
+            $user->reset_token = null;
             $user->save();
 
-            return redirect()->route('login')->with('success', __('Password updated successfully.'));
+            session()->forget(self::RESET_SESSION_KEY);
+
+            return redirect()->route('login')->with('success', __('auth.resetSuccess'));
         }
 
-        // Render the password reset view
-        return view('admin.auth.resetpassword', ['id' => $id]);
+        return view('admin.auth.resetpassword', ['id' => $verifiedId]);
     }
 
-
+    /**
+     * Role dashboard landing page.
+     */
     public function countList()
     {
-        // Check if user is logged in
-        if (!session()->has('isLoggedIn')) {
-            return redirect()->to('sysCtrlLogin');
+        if (! session()->has('isLoggedIn') && ! auth()->check()) {
+            return redirect()->route('login');
         }
-        // Active menu for highlighting in the view
+
         $activeMenu = 'dashboard';
 
-        // Fetch the list of users
-        $users = User::all(); // Fetch all users from the `users` table
-
-        // Pass data to the view
-        return view('admin.auth.superadmin', compact('activeMenu', 'users'));
+        return view('admin.auth.superadmin', compact('activeMenu'));
     }
 
     /*
       |--------------------------------------------------------------------------
       | LOG USER OUT
       |--------------------------------------------------------------------------
-      |
-      | Destroy session
-      |
-     */
-
+    */
     public function logout()
     {
         $this->authLibrary->logout();
-        return redirect()->to('/');
+
+        return redirect()->route('login')->with('success', 'You have been logged out successfully.');
     }
 }

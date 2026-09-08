@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +22,21 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Brute-force protection for login attempts (per e-mail + IP).
+        RateLimiter::for('login', function (Request $request) {
+            return Limit::perMinute(5)->by(
+                strtolower((string) $request->input('email', '')).'|'.$request->ip()
+            );
+        });
+
+        // Anti-spam protection for public registration.
+        RateLimiter::for('register', function (Request $request) {
+            return Limit::perMinute(3)->by($request->ip());
+        });
+
+        // Anti-abuse protection for password/activation e-mail endpoints.
+        RateLimiter::for('password-email', function (Request $request) {
+            return Limit::perMinute(3)->by($request->ip());
+        });
     }
 }

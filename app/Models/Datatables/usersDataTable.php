@@ -38,17 +38,19 @@ class usersDataTable extends Model
             });
         }
 
-        // Sorting
+        // Sorting (column + direction strictly whitelisted to prevent SQL injection).
         $order = $request->input('order');
         if (!empty($order) && isset($order[0]['column'])) {
-            $columnIndex = $order[0]['column'];
-            $columnDir = $order[0]['dir'];
+            $columnIndex = (int) $order[0]['column'];
+            $columnDir = strtolower((string) ($order[0]['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
 
             if (isset($this->columns[$columnIndex])) {
                 $query->orderBy($this->columns[$columnIndex], $columnDir);
+            } else {
+                $query->orderBy('id', 'desc');
             }
         } else {
-            $query->orderBy('id', 'DESC');
+            $query->orderBy('id', 'desc');
         }
 
         return $query;
@@ -61,10 +63,10 @@ class usersDataTable extends Model
     {
         $query = $this->getTableQuery($request);
 
-        // Pagination
-        if ($request->has('start') && $request->has('length') && $request->input('length') != -1) {
-            $query->skip((int) $request->input('start'))
-                  ->take((int) $request->input('length'));
+        // Pagination (clamped to sane bounds).
+        if ($request->has('start') && $request->has('length') && (int) $request->input('length') !== -1) {
+            $query->skip(max((int) $request->input('start'), 0))
+                  ->take(min(max((int) $request->input('length'), 1), 100));
         }
 
         return $query->get();

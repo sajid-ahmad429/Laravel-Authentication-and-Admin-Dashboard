@@ -7,44 +7,38 @@
  *
  * This content is released under the MIT License (MIT)
  *
- * @package    AuthLibrary
- * @author     Your Name
- * @license    https://opensource.org/licenses/MIT MIT License
- * @link       Your link or documentation
- * @since      Version 1.0
+ * Custom session-based authentication library with secure token handling,
+ * remember-me cookies (selector + hashed validator pattern) and login auditing.
  */
 
 namespace App\Libraries;
 
-use App\Models\AuthModel;  // Assuming you have an AuthModel
-use App\Models\AuthToken;
-use App\Models\User;
-use Config\Auth;
-use Illuminate\Support\Facades\Session;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Cookie;
-use Carbon\Carbon;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Lang;
-use Illuminate\Support\Facades\Mail;
+use App\Jobs\SendWelcomeEmail;
 use App\Mail\ResetPasswordMail;
 use App\Mail\SendActivationMail;
+use App\Models\AuthModel;
+use App\Models\AuthToken;
+use App\Models\User;
+use Carbon\Carbon;
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cookie;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Lang;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
-use Exception;
-
-
 
 /**
  * AuthLibrary - Custom Authentication Library
  */
 class AuthLibrary
 {
-    protected $AuthModel;
-    protected $config;
-    protected $session;
-    protected $request;
-    protected $sendEmail;
+    protected AuthModel $authModel;
+    protected array $config;
+
     /**
      * Constructor
      *
@@ -52,64 +46,50 @@ class AuthLibrary
      */
     public function __construct()
     {
-        // Initialize the models and services
-        $this->AuthModel = new AuthModel();
-        $this->config = config('auth');  // You can access config files this way in Laravel
-        $this->session = session();
+        $this->authModel = new AuthModel();
+        $this->config = config('auth');
     }
-
 
     /*
      * --------------------------------------------------------------------------
      * Generate Token
      * --------------------------------------------------------------------------
      *
-     * Generates a random token encodes it then hashes it.
-     * Sets the expiry time for the token
+     * Generates a cryptographically secure URL-safe token, stores only its
+     * hash in the database and returns the raw token for e-mail links.
+     * The raw token is never persisted, so a database leak cannot be used
+     * to hijack activation / password-reset links.
      *
-     * @param  int $user
-     * @param  int $tokentype
-     * @return int $encodedtoken
-     *
-    */
-
-    public function generateToken($user, $tokentype)
+     * @param  \App\Models\User|\App\Models\AuthModel  $user
+     * @param  string  $tokenType  reset_token|activate_token
+     * @return string  $rawToken (URL-safe, place directly in links)
+     */
+    public function generateToken($user, string $tokenType): string
     {
-        // Generate a random token
-        $token = Str::random(40);
+        if (! $user || ! $user->exists) {
+            throw new InvalidArgumentException('Cannot generate a token for a missing user.');
+        }
 
-        // Encode the token
-        $encodedToken = base64_encode($token);
-
-        // Hash the encoded token
+        // Str::random() is alphanumeric only, hence URL-safe without encoding.
+        $token = Str::random(60);
         $hashedToken = Hash::make($token);
 
-        // Determine token expiry time based on token type
-        if ($tokentype === 'reset_token') {
-            $tokenexpire = 'reset_expire';
-            $expireTime = config('auth.reset_token_expire') ?? 1; // Default to 60 minutes
-        } elseif ($tokentype === 'activate_token') {
-            $tokenexpire = 'activate_expire';
-            $expireTime = config('auth.activate_token_expire') ?? 24; // Default to 24 hours
+        if ($tokenType === 'reset_token') {
+            $expiryColumn = 'reset_expire';
+            $expireHours = (int) config('auth.reset_token_expire', 1);
+        } elseif ($tokenType === 'activate_token') {
+            $expiryColumn = 'activate_expire';
+            $expireHours = (int) config('auth.activate_token_expire', 24);
         } else {
             throw new InvalidArgumentException('Invalid token type provided.');
         }
 
-        // Set the expiry time
-        $TokenExpireTime = Carbon::now()->addHours($expireTime);
+        $user->forceFill([
+            $tokenType => $hashedToken,
+            $expiryColumn => Carbon::now()->addHours(max($expireHours, 1)),
+        ])->save();
 
-        // UPDATE DB WITH HASHED TOKEN
-        // Update the user's record in the database
-        $user->update([
-            'id' => $user['id'],
-            'email' => $user['email'],
-            'name' => $user['name'],
-            $tokentype => $hashedToken,
-            $tokenexpire => $TokenExpireTime,
-        ]);
-
-        // Return the encoded token
-        return $encodedToken;
+        return $token;
     }
 
     /**
@@ -117,51 +97,40 @@ class AuthLibrary
      * LOGIN USER
      * --------------------------------------------------------------------------
      *
-     * Form validation done in controller
-     * Gets the user from DB
-     * Checks if their account is activated
-     * Sets the user session and logs them in
+     * Form validation is done in the controller. This method fetches the user,
+     * verifies the account is activated, establishes the session and redirects
+     * to the role-appropriate dashboard.
      *
-     * @param  string $email
-     * @return true
+     * @param  string  $email
+     * @param  bool  $rememberMe
+     * @return \Illuminate\Http\RedirectResponse
      */
-
-    public function LoginUser($email, $rememberMe)
+    public function loginUser(string $email, bool $rememberMe = false)
     {
-        // GET USER DETAILS FROM DB
         $user = User::where('email', $email)->first();
 
-        // Check if the user exists
-        if (!$user) {
-            session()->flash('danger', __('User not found.'));
+        if (! $user) {
+            session()->flash('danger', __('auth.failed'));
             return redirect()->back();
         }
 
-        // Check if the account is activated
-        if ($user->activated == 0) {
-            // Account not activated, set a link to resend activation email
-            session()->flash('danger', __('Your account is not activated.'));
-            session()->flash('resetlink', '<a href="' . route('resend.activation', $user->id) . '">Resend Activation Email</a>');
+        if ((int) $user->activated !== 1) {
+            session()->flash('danger', __('Your account is not activated. Please check your e-mail for the activation link.'));
+            session()->flash('resetlink', '<a href="'.route('resend.activation', $user->id).'">Resend Activation Email</a>');
             return redirect()->back();
         }
 
-        // SET USER ID AS A VARIABLE
-        $userID = $user->id;
+        $rememberConfig = config('auth.rememberMe', []);
 
-        // IF REMEMBER ME FUNCTION IS SET TO TRUE IN CONFIG
-        $rememberConfig = config('auth.rememberMe'); // Access Remember Me configuration
-        if ($rememberConfig['enabled'] && $rememberMe == '1') {
-            $this->rememberMe($userID);
-            session(['rememberme' => $rememberMe]); // Save in session
+        if (! empty($rememberConfig['enabled']) && $rememberMe) {
+            $this->rememberMe($user->id);
+            session(['rememberme' => '1']);
         }
 
-        session(['lockscreen' => false]); // Set lockscreen to false
+        session(['lockscreen' => false]);
 
-        // SET USER SESSION (Yeh session mein 'role' save karta hoga)
         $this->setUserSession($user);
 
-        // FIX: Use autoRedirect() instead of hardcoded 'dashboard'
-        // to safely redirect to '/admin', '/superadmin', etc. based on their config/role
         return redirect()->to($this->autoRedirect())->with('success', 'Login successful!');
     }
 
@@ -170,54 +139,46 @@ class AuthLibrary
      * REGISTER USER
      * --------------------------------------------------------------------------
      *
-     * Form validation done in controller
-     * Save user details to DB
-     * Send activation email if config is set to true
-     * If config is false manually activate account
+     * Saves user details to the database, assigns the default (low-privilege)
+     * role and optionally sends the activation e-mail.
      *
-     * @param  array $userData
-     * @return true
+     * @param  array  $userData
+     * @return bool
      */
-
-    public function registerUser(array $userData)
+    public function registerUser(array $userData): bool
     {
-        // Add User to Default Role
-        $defaultRole = config('auth.default_role', 'admin'); // Retrieve default role from config
+        $defaultRole = strtolower((string) config('auth.default_role', 'subscriber'));
         $userData['roles'] = $defaultRole;
 
-        // Save User Details to Database
         AuthModel::create($userData);
 
-        // FIND OUR NEW USER BY EMAIL SO WE CAN GRAB NEW DETAILS
-        $user = $this->AuthModel->where('email', $userData['email'])->first();
+        $user = User::where('email', $userData['email'])->first();
 
-        // Check if the user was successfully created
-        if (!$user) {
+        if (! $user) {
             session()->flash('danger', __('auth.error_occurred'));
             return false;
         }
 
-        // Should We Send an Activation Email?
-        $sendActivationEmail = config('auth.send_activation_email', true); // Retrieve email setting from config
-
-        if ($sendActivationEmail) {
-            // Generate a New Token
-            $token = $this->generateToken($user, 'activate_token');
-
-            // Generate and Send Activation Email
-            $result = $this->sendActivationEmail($user, $token);
-
-            if ($result) {
-                session()->flash('success', __('auth.account_created'));
-                return true;
-            } else {
-                session()->flash('danger', __('auth.error_occurred'));
-                return false;
-            }
+        // Mirror the default role into Spatie so session/permission checks agree.
+        try {
+            $user->syncRoles([$defaultRole]);
+        } catch (\Throwable $e) {
+            Log::warning('Could not sync default Spatie role during registration: '.$e->getMessage());
         }
 
-        // If Not Sending Activation Email, Activate the User Immediately
-        $user->update(['activated' => true]);
+        if (config('auth.send_activation_email', true)) {
+            $token = $this->generateToken($user, 'activate_token');
+
+            if ($this->sendActivationEmail($user, $token)) {
+                session()->flash('success', __('auth.account_created'));
+                return true;
+            }
+
+            session()->flash('danger', __('auth.error_occurred'));
+            return false;
+        }
+
+        $user->forceFill(['activated' => 1])->save();
 
         session()->flash('success', __('auth.account_created_no_auth'));
         return true;
@@ -228,44 +189,25 @@ class AuthLibrary
      * ACTIVATE EMAIL
      * --------------------------------------------------------------------------
      *
-     * Set up the activation email if config is set to true
-     * Send Email
+     * Sends the account activation e-mail with a signed link.
      *
-     * @param  int $user
-     * @param  int $encodedtoken
-     * @return boolean
+     * @param  \App\Models\User|\App\Models\AuthModel  $user
+     * @param  string  $activationToken  Raw (URL-safe) token
+     * @return bool
      */
-
-    public function sendActivationEmail($user, $activationToken)
+    public function sendActivationEmail($user, string $activationToken): bool
     {
-        /** @var \App\Models\User $user */
-        $base64decodedId = base64_encode($user->id);
-        // Activation link to include in the email template
-        $activationLink = url('/activate/' . $base64decodedId . '/' . $activationToken);
-
-        // Data to pass to the email template
-        $data = [
-            'userid' => $user->id,
-            'name' => $user->name,
-            'activationLink' => $activationLink,
-        ];
-
-        // SET EMAIL DATA
-        $emailData = [
-            'to' => $user->email,
-            'subject' => config('mail.activation_email_subject', 'Activate Your Account'),
-        ];
+        $encodedId = self::encodeId($user->id);
+        $activationLink = url('/activate/'.$encodedId.'/'.$activationToken);
 
         try {
-            // SEND EMAIL USING A MAILABLE CLASS
-            Mail::to($emailData['to'])->send(new SendActivationMail($user, $activationLink));
+            Mail::to($user->email)->send(new SendActivationMail($user, $activationLink));
 
-            // SUCCESS MESSAGE
-            session()->flash('success', __('auth.account_created'));
             return true;
-        } catch (\Exception $e) {
-            // ERROR MESSAGE
+        } catch (\Throwable $e) {
+            Log::error('Failed to send activation e-mail: '.$e->getMessage(), ['user_id' => $user->id ?? null]);
             session()->flash('danger', __('auth.error_occurred'));
+
             return false;
         }
     }
@@ -275,33 +217,37 @@ class AuthLibrary
      * RESEND ACTIVATION EMAIL
      * --------------------------------------------------------------------------
      *
-     * Resends the user activation email
-     *
-     * @param  int $id
-     * @return boolean
+     * @param  mixed  $id
+     * @return bool
      */
-
-    public function resendActivation($id)
+    public function resendActivation($id): bool
     {
-        // Find user by ID
-        $user = AuthModel::where('id', $id)->first();
-
-        if (!$user) {
-            return redirect()->back()->with('error', __('User not found.'));
-        }
-
-        // Generate a new activation token
-        $encodedtoken = $this->generateToken($user, 'activate_token');
-        $result = $this->sendActivationEmail($user, $encodedtoken);
-        if ($result) {
-            // Send success flash message and return true
-            session()->flash('success', __('Activation email re-sent successfully.'));
-            return true;
-        } else {
-            // Send error flash message and return false
-            session()->flash('error', __('An error occurred while sending the email.'));
+        if (! is_numeric($id)) {
+            session()->flash('danger', __('auth.error_occurred'));
             return false;
         }
+
+        $user = User::find($id);
+
+        if (! $user) {
+            session()->flash('danger', __('auth.userNotFound'));
+            return false;
+        }
+
+        if ((int) $user->activated === 1) {
+            session()->flash('success', __('auth.account_activated'));
+            return false;
+        }
+
+        $token = $this->generateToken($user, 'activate_token');
+
+        if ($this->sendActivationEmail($user, $token)) {
+            session()->flash('success', __('Activation email re-sent successfully.'));
+            return true;
+        }
+
+        session()->flash('danger', __('An error occurred while sending the email.'));
+        return false;
     }
 
     /**
@@ -309,81 +255,72 @@ class AuthLibrary
      * ACTIVATE USER
      * --------------------------------------------------------------------------
      *
-     * Incoming request from email link to activate the user
-     * Decode the token and get user details from DB
-     * Check if token is valid and hasnt expired
-     * Update user to activated
+     * Validates an activation link (user id + token), checks expiry and
+     * activates the account. Never throws for bad links; returns false.
      *
-     * @param  int $id
-     * @param  int $token
-     * @return void
+     * @param  string  $id     URL-safe base64 encoded user id
+     * @param  string  $token  Raw token from the e-mail link
+     * @return bool
      */
-
-    public function activateUser($id, $token)
+    public function activateUser($id, $token): bool
     {
-        // Decode the ID
-        $decodedId = base64_decode($id);
+        $decodedId = self::decodeId($id);
 
-        // Decode the token
-        $decodedToken = base64_decode($token);
-
-        // Find the user by ID
-        $user = AuthModel::findOrFail($decodedId);
-
-        // Check if the activation token exists
-        if (!$user->activate_token) {
-            // Set a flash message for the danger alert
-            Session::flash('danger', __('No activation token found.'));
-            // Redirect to the login page
-            return redirect()->to('/');
-        }
-
-        // Check if the token has expired
-        $resetExpiry = $user->activate_expire; // Assuming it's stored as a datetime
-        if (Carbon::now()->greaterThanOrEqualTo(Carbon::parse($resetExpiry))) {
-            Session::flash('danger', __('The activation link has expired.'));
-            return false;
-        }
-
-        // Verify the token
-        if (!Hash::check($decodedToken, $user->activate_token)) {
+        if ($decodedId === null || empty($token) || ! is_string($token)) {
             Session::flash('danger', Lang::get('auth.invalidToken'));
             return false;
         }
 
-        // Update user data
-        $user->update([
-            'activated' => true,
-            'activate_token' => null, // Clear the token
-            'activate_expire' => null, // Clear the expiry
-        ]);
+        $user = AuthModel::find($decodedId);
 
-        // Set success message
+        if (! $user || empty($user->activate_token)) {
+            Session::flash('danger', Lang::get('auth.invalidToken'));
+            return false;
+        }
+
+        if (empty($user->activate_expire) || Carbon::now()->greaterThanOrEqualTo(Carbon::parse($user->activate_expire))) {
+            Session::flash('danger', Lang::get('auth.linkExpired'));
+            return false;
+        }
+
+        if (! Hash::check($token, $user->activate_token)) {
+            Session::flash('danger', Lang::get('auth.invalidToken'));
+            return false;
+        }
+
+        $user->forceFill([
+            'activated' => 1,
+            'activate_token' => null,
+            'activate_expire' => null,
+        ])->save();
+
         Session::flash('success', Lang::get('auth.account_activated'));
         return true;
     }
-
 
     /**
      * --------------------------------------------------------------------------
      * FORGOT PASSWORD
      * --------------------------------------------------------------------------
      *
-     * @param  int $email
-     * @return void
+     * Generates a reset token and e-mails the reset link. Returns false when
+     * the e-mail address is unknown (callers should still show a generic
+     * success message to avoid account enumeration).
+     *
+     * @param  string  $email
+     * @return bool
      */
-    public function Forgotpassword($email)
+    public function forgotPassword(string $email): bool
     {
-
-        // FIND USER BY EMAIL
         $user = AuthModel::where('email', $email)->first();
-        // GENERATE A NEW TOKEN
-        // SET THE TOKEN TYPE AS SECOND PARAMETER. Reset password token = 'reset_token'
-        $encodedtoken = $this->generateToken($user, 'reset_token');
-        // GENERATE AND SEND RESET EMAIL
-        $data = $this->ResetEmail($user, $encodedtoken);
 
-        return;
+        if (! $user) {
+            return false;
+        }
+
+        $token = $this->generateToken($user, 'reset_token');
+
+        return $this->resetEmail($user, $token);
     }
 
     /**
@@ -391,98 +328,69 @@ class AuthLibrary
      * RESET EMAIL
      * --------------------------------------------------------------------------
      *
-     * Sends the user a password reset link email
+     * Sends the user a password reset link e-mail.
      *
-     * @param  array $user
-     * @param  int $encodedtoken
-     * @return boolean
+     * @param  \App\Models\User|\App\Models\AuthModel  $user
+     * @param  string  $token  Raw (URL-safe) token
+     * @return bool
      */
-
-    public function ResetEmail($user, $encodedToken)
+    public function resetEmail($user, string $token): bool
     {
-        /** @var \App\Models\User $user */
-        $base64decodedId = base64_encode($user->id);
-        // RESET LINK TO INCLUDE IN EMAIL TEMPLATE
-        $resetLink = url('/resetpassword/' . $base64decodedId . '/' . $encodedToken);
-
-        // SET DATA TO PASS TO THE EMAIL VIEW
-        $data = [
-            'userid' => $user->id,
-            'name' => $user->name,
-            'resetlink' => $resetLink,
-        ];
-
-        // SET EMAIL DATA
-        $emailData = [
-            'to' => $user->email,
-            'subject' => config('mail.reset_email_subject', 'Password Reset Request'),
-        ];
+        $encodedId = self::encodeId($user->id);
+        $resetLink = url('/resetpassword/'.$encodedId.'/'.$token);
 
         try {
-            // SEND EMAIL USING A MAILABLE CLASS
-            Mail::to($emailData['to'])->send(new ResetPasswordMail($user, $resetLink));
+            Mail::to($user->email)->send(new ResetPasswordMail($user, $resetLink));
 
-            // SUCCESS MESSAGE
             session()->flash('success', __('auth.resetSent'));
             return true;
-        } catch (\Exception $e) {
-            // ERROR MESSAGE
-            session()->flash('danger', __('auth.errorOccured'));
+        } catch (\Throwable $e) {
+            Log::error('Failed to send password reset e-mail: '.$e->getMessage(), ['user_id' => $user->id ?? null]);
+            session()->flash('danger', __('auth.error_occurred'));
             return false;
         }
     }
 
     /**
      * --------------------------------------------------------------------------
-     * RESET PASSWORD
+     * RESET PASSWORD (verify link)
      * --------------------------------------------------------------------------
      *
-     * Incoming request to reset password
-     * Decode the token and get user details from DB
-     * Check if token is valid and hasnt expired
-     * Return user id to use on password reset form
+     * Validates an incoming password-reset link. Returns the numeric user id
+     * when the link is valid, or false otherwise (never throws for bad links).
      *
-     * @param  int $id
-     * @param  int $token
-     * @return true $id
+     * @param  string  $id     URL-safe base64 encoded user id
+     * @param  string  $token  Raw token from the e-mail link
+     * @return int|false
      */
-    public function ResetPassword($id, $token)
+    public function resetPassword($id, $token)
     {
-        // Decode the token
-        $decodedToken = base64_decode($token);
-        // Decode the id
-        $decodedId = base64_decode($id);
+        $decodedId = self::decodeId($id);
 
-        // Get user details from the database
+        if ($decodedId === null || empty($token) || ! is_string($token)) {
+            Session::flash('danger', Lang::get('auth.invalidToken'));
+            return false;
+        }
+
         $user = AuthModel::find($decodedId);
 
-        if (!$user) {
-            // User not found, set flash message
+        if (! $user) {
             Session::flash('danger', Lang::get('auth.userNotFound'));
             return false;
         }
 
-        // Fetch the expiry time for the token
-        $resetExpiry = $user->reset_expire; // Assuming it's stored as a DateTime
-        $timeNow = Carbon::now();
-
-        // Check if the token has expired
-        if (!$resetExpiry || $timeNow->greaterThanOrEqualTo(Carbon::parse($resetExpiry))) {
-            // Token has expired, set flash message
+        if (empty($user->reset_expire) || Carbon::now()->greaterThanOrEqualTo(Carbon::parse($user->reset_expire))) {
             Session::flash('danger', Lang::get('auth.linkExpired'));
             return false;
         }
 
-        // Check the token against the hashed token in the database
-        if (!$user->reset_token || !Hash::check($decodedToken, $user->reset_token)) {
-            // Token does not match, set flash message
+        if (empty($user->reset_token) || ! Hash::check($token, $user->reset_token)) {
             Session::flash('danger', Lang::get('auth.noAuth'));
             return false;
-        } else {
-            // Token is valid, set success message
-            Session::flash('success', Lang::get('auth.passwordAuthorised'));
-            return $decodedId;
         }
+
+        Session::flash('success', Lang::get('auth.passwordAuthorised'));
+        return (int) $user->id;
     }
 
     /**
@@ -490,31 +398,48 @@ class AuthLibrary
      * SET USER SESSION
      * --------------------------------------------------------------------------
      *
-     * Saves user details to session
+     * Establishes the authenticated session: regenerates the session id
+     * (session fixation protection), stores the identity payload and bridges
+     * the login into Laravel's Auth guard so Auth::user(), @auth, policies
+     * and Spatie permission checks all work.
      *
-     * @param  \App\Models\User $user
+     * @param  \App\Models\User|\App\Models\AuthModel  $user
      * @return bool
      */
-    public function setUserSession($user)
+    public function setUserSession($user): bool
     {
-        // Resolve Spatie role name safely without triggering property shadow collision
-        $spatieRole = $user->roles()->pluck('name')->first();
-        $roleName = strtolower($spatieRole ?? 'admin');
+        if (! $user) {
+            return false;
+        }
 
-        // Prepare user session data
-        $data = [
+        $authUser = $user instanceof Authenticatable ? $user : User::find($user->id);
+
+        $roleName = 'subscriber';
+        if ($authUser) {
+            try {
+                $roleName = strtolower((string) ($authUser->getRoleNames()->first() ?? $user->roles ?? 'subscriber'));
+            } catch (\Throwable $e) {
+                $roleName = strtolower((string) ($user->roles ?? 'subscriber'));
+            }
+        }
+
+        // Prevent session fixation attacks.
+        request()->session()->regenerate();
+
+        session([
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
-            'role' => $roleName,
+            'role' => $roleName ?: 'subscriber',
             'isLoggedIn' => true,
-            'ipaddress' => request()->ip(), // Get IP address
-        ];
+            'ipaddress' => request()->ip(),
+        ]);
 
-        // Store session data
-        session($data);
+        // Bridge into Laravel's guard (enables Auth::check(), @auth, Spatie, ...).
+        if ($authUser) {
+            Auth::login($authUser);
+        }
 
-        // Log login details
         $this->loginlog();
 
         return true;
@@ -522,63 +447,71 @@ class AuthLibrary
 
     /**
      * --------------------------------------------------------------------------
-     * lOG LOGIN
+     * LOG LOGIN
      * --------------------------------------------------------------------------
      *
-     * Logs users login session to DB
+     * Logs a successful login session to the database.
      *
      * @return void
      */
-    public function loginlog()
+    public function loginlog(): void
     {
-        if ($this->session->has('isLoggedIn')) {
-            $logdata = [
-                'user_id'        => $this->session->get('id'),
-                'name'           => $this->session->get('name'),
-                'email'          => $this->session->get('email'), // Missing tha, ab add kar diya gaya hai
-                'role'           => $this->session->get('role'),
-                'ip_address'     => request()->ip(),
-                'user_agent'     => request()->userAgent(),     // Missing tha, ab add kar diya gaya hai
-                'device_type'    => 'Desktop',                  // Missing tha, ab add kar diya gaya hai
-                'successful'     => true,                       // Boolean format mein standard rakha gaya hai
-                'failure_reason' => null,
-                'logged_in_at'   => Carbon::now(),              // Standardized with Carbon
-            ];
+        if (! session()->has('isLoggedIn')) {
+            return;
+        }
 
-            $this->AuthModel->logLogin($logdata);
+        try {
+            $this->authModel->logLogin([
+                'user_id' => session()->get('id'),
+                'name' => session()->get('name'),
+                'email' => session()->get('email'),
+                'role' => session()->get('role'),
+                'ip_address' => request()->ip(),
+                'user_agent' => request()->userAgent(),
+                'device_type' => 'Desktop',
+                'successful' => true,
+                'failure_reason' => null,
+                'logged_in_at' => Carbon::now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to write login audit record: '.$e->getMessage());
         }
     }
 
     /**
      * --------------------------------------------------------------------------
-     * lOG LOGIN FAILURE
+     * LOG LOGIN FAILURE
      * --------------------------------------------------------------------------
      *
-     * If user login / verification failed log an unsuccesfull login attempt
+     * Logs an unsuccessful login attempt for an existing account.
      *
-     * @param  mixed $email
+     * @param  string  $email
+     * @param  string  $reason
      * @return void
      */
-
-    public function loginlogFail(string $email)
+    public function loginlogFail(string $email, string $reason = 'Invalid credentials'): void
     {
-        $user = AuthModel::where('email', $email)->first();
+        try {
+            $user = AuthModel::where('email', $email)->first();
 
-        if ($user) {
-            $logData = [
-                'user_id'        => $user->id,
-                'name'           => $user->name,
-                'email'          => $user->email,               // Added missing email field
-                'role'           => $user->roles,
-                'ip_address'     => request()->ip(),
-                'user_agent'     => request()->userAgent(),     // Added missing user agent
-                'device_type'    => 'Desktop',                  // Added missing device type
-                'successful'     => false,                      // Standard boolean format (0 ki jagah false)
-                'failure_reason' => 'Invalid credentials',      // Added failure reason description
-                'logged_in_at'   => Carbon::now(),              // Replaced 'date' with 'logged_in_at' to match model
-            ];
+            if (! $user) {
+                return;
+            }
 
-            $this->AuthModel->logLogin($logData);
+            $this->authModel->logLogin([
+                'user_id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => is_string($user->roles) ? $user->roles : null,
+                'ip_address' => request()->ip(),
+                'user_agent' => request()->userAgent(),
+                'device_type' => 'Desktop',
+                'successful' => false,
+                'failure_reason' => $reason,
+                'logged_in_at' => Carbon::now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to write failed-login audit record: '.$e->getMessage());
         }
     }
 
@@ -587,73 +520,62 @@ class AuthLibrary
      * REMEMBER ME
      * --------------------------------------------------------------------------
      *
-     * if the remember me function is set to true in the config file
-     * we set up a cookie using a secure selector|validator
+     * Issues a persistent login cookie using the secure selector:validator
+     * pattern. Only the selector and a SHA-256 hash of the validator are
+     * stored server-side; the raw validator lives only in the cookie.
      *
-     * @param  int $userID
+     * @param  int  $userId
      * @return void
      */
-
-    public function rememberMe($userID)
+    public function rememberMe($userId): void
     {
-        // Check if Remember Me is enabled
-        if (!$this->config['rememberMe']['enabled']) {
+        if (empty($this->config['rememberMe']['enabled'])) {
             return;
         }
 
-        // Generate secure tokens
-        $selector = Str::random(12);
-        $validator = Str::random(20);
-        $expires = Carbon::now()->addDays($this->config['rememberMe']['expire_days']);
-
-        // Hash the validator
-        $hashedValidator = hash('sha256', $validator);
-
-        // Prepare the token
-        $token = $selector . ':' . $validator;
+        $selector = Str::random(24);
+        $validator = Str::random(48);
+        $expires = Carbon::now()->addDays((int) ($this->config['rememberMe']['expire_days'] ?? 30));
 
         $data = [
-            'user_id' => $userID,
+            'user_id' => $userId,
             'selector' => $selector,
-            'hashedvalidator' => $hashedValidator,
-            'expires' => $expires,
+            'hashedvalidator' => hash('sha256', $validator),
+            'token_type' => 'remember_me',
+            'expires_at' => $expires,
         ];
 
-        // CHECK IF A USER ID ALREADY HAS A TOKEN SET
-        //
-        // We dont really want to have multiple tokens and selectors for the
-        // same user id. there is no need as the validator gets updated on each login
-        // so check if there is a token already and overwrite if there is.
-        // should keep DB maintenance down a bit and remove the need to do sporadic purges.
-        //
+        // A user keeps a single remember-me token; rotate it on each issue.
+        $existing = AuthModel::getAuthTokenByUserId($userId);
 
-        $result = $this->AuthModel->GetAuthTokenByUserId($userID);
-        // IF NOT INSERT
-        if (empty($result)) {
-            $this->AuthModel->insertToken($data);
+        if (empty($existing)) {
+            AuthModel::insertToken($data);
         } else {
-            $this->AuthModel->updateToken($data);
+            AuthModel::updateToken($data);
         }
 
-        // Set the cookie
-        Cookie::queue(
+        Cookie::queue(Cookie::make(
             'remember',
-            $token,
-            $expires->diffInMinutes(),
+            $selector.':'.$validator,
+            max((int) $expires->diffInMinutes(), 1),
             '/',
-            config('session.domain', null),
-            config('session.secure', false),
-            true // HTTP-only
-        );
+            config('session.domain'),
+            (bool) config('session.secure', false),
+            true,   // HttpOnly
+            false,  // raw
+            config('session.same_site', 'lax') ?? 'lax'
+        ));
     }
 
     /**
-     * Remember Me Reset / Refresh on successful cookie login
+     * Rotate the remember-me token after a successful cookie login.
+     *
+     * @param  int  $userId
+     * @return void
      */
-    public function rememberMeReset($userID)
+    public function rememberMeReset($userId): void
     {
-        // Aapka banaya hua rememberMe function yahan directly call ho jayega
-        $this->rememberMe($userID);
+        $this->rememberMe($userId);
     }
 
     /**
@@ -661,79 +583,79 @@ class AuthLibrary
      * CHECK REMEMBER ME COOKIE
      * --------------------------------------------------------------------------
      *
-     * checks to see if a remember me cookie has ever been set
-     * if we find one w echeck it against our auth_tokens table and see
-     * if we find a match and its still valid.
+     * Validates a remember-me cookie against the auth_tokens table, honoring
+     * expiry, and re-establishes the session on success.
      *
-     * @return void
+     * @return bool  True when a session was restored from the cookie.
      */
-
-    public function checkCookie()
+    public function checkCookie(): bool
     {
-        // Check if the user is locked out
-        if (Session::get('lockscreen') == true) {
-            return;
+        if (session()->has('isLoggedIn') || Auth::check()) {
+            return true;
         }
 
-        // Check if a remember me cookie is set
-        $remember = Cookie::get('remember');
-
-        if (empty($remember)) {
-            return;
-        }
-
-        list($selector, $validator) = explode(':', $remember);
-        $validator = hash('sha256', $validator);
-
-        $token = AuthToken::where('selector', $selector)->first();
-
-        if (empty($token)) {
+        if (session()->get('lockscreen') == true) {
             return false;
         }
 
-        if (!hash_equals($token->hashedvalidator, $validator)) {
+        $remember = Cookie::get('remember');
+
+        if (empty($remember) || ! is_string($remember) || ! str_contains($remember, ':')) {
+            return false;
+        }
+
+        [$selector, $validator] = explode(':', $remember, 2);
+
+        if ($selector === '' || $validator === '') {
+            return false;
+        }
+
+        $token = AuthToken::where('selector', $selector)->first();
+
+        if (! $token || ! hash_equals((string) $token->hashedvalidator, hash('sha256', $validator))) {
+            return false;
+        }
+
+        // Reject (and purge) expired tokens.
+        if ($token->expires_at && Carbon::parse($token->expires_at)->isPast()) {
+            AuthModel::deleteTokenByUserId($token->user_id);
+            Cookie::queue(Cookie::forget('remember'));
             return false;
         }
 
         $user = User::find($token->user_id);
 
-        if (empty($user)) {
+        if (! $user || (int) $user->activated !== 1) {
             return false;
         }
 
-        // Fixed config key 'force_login' matching your config/auth.php file
-        if (config('auth.force_login') > 1) {
-            if (rand(1, 100) < config('auth.force_login')) {
-                $this->AuthModel->deleteTokenByUserId($token->user_id);
-                return;
-            }
+        // Probabilistic forced re-authentication (0 = disabled).
+        $forceLogin = (int) config('auth.force_login', 0);
+        if ($forceLogin > 0 && random_int(1, 100) <= $forceLogin) {
+            AuthModel::deleteTokenByUserId($token->user_id);
+            Cookie::queue(Cookie::forget('remember'));
+            return false;
         }
 
-        // Set the user session
         $this->setUserSession($user);
 
-        // Reset the remember me cookie
-        if (method_exists($this, 'rememberMeReset')) {
+        if (! empty($this->config['rememberMe']['renew'])) {
             $this->rememberMeReset($user->id);
-        } else {
-            $this->rememberMe($user->id);
         }
 
-        return;
+        return true;
     }
 
     /**
-     * Example Method - Send Welcome Email
+     * Queue a welcome e-mail for the given address.
      *
-     * Send a welcome email to the user after successful registration.
-     *
-     * @param string $email
+     * @param  string  $email
+     * @param  string  $message
      * @return void
      */
-    public function sendWelcomeEmail($email)
+    public function sendWelcomeEmail(string $email, string $message = 'Welcome to our application!'): void
     {
-        // Use the SendEmail library to send an email
-        $this->sendEmail->send($email, 'Welcome to our application', 'welcome-email-template');
+        SendWelcomeEmail::dispatch($email, $message);
     }
 
     /**
@@ -741,28 +663,84 @@ class AuthLibrary
      * LOGOUT
      * --------------------------------------------------------------------------
      *
+     * Revokes the remember-me token, clears the remember cookie, logs out of
+     * Laravel's guard and destroys the session.
+     *
      * @return void
      */
-    public function logout()
+    public function logout(): void
     {
-        // REMOVE REMEMBER ME TOKEN FROM DB
-        $this->AuthModel->DeleteTokenByUserId($this->session->get('id'));
-        //DESTROY SESSION
-        Session::flush();
-        return;
-    }
-
-
-
-    public function autoredirect()
-    {
-        $redirect = $this->config['assign_redirect'];
-        $role = strtolower($this->session->get('role')); // Lowercase conversion for safety
-
-        if (isset($redirect[$role])) {
-            return $redirect[$role];
+        try {
+            if (session()->has('id')) {
+                AuthModel::deleteTokenByUserId(session()->get('id'));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to revoke remember-me token on logout: '.$e->getMessage());
         }
 
-        return '/admin'; // Fallback to your working admin route instead of default-page
+        Cookie::queue(Cookie::forget('remember'));
+
+        Auth::logout();
+
+        session()->invalidate();
+        session()->regenerateToken();
+    }
+
+    /**
+     * Resolve the dashboard path for the current session role.
+     *
+     * @return string
+     */
+    public function autoRedirect(): string
+    {
+        $redirects = $this->config['assign_redirect'] ?? [];
+        $role = strtolower((string) session()->get('role', ''));
+
+        if ($role !== '' && isset($redirects[$role])) {
+            return $redirects[$role];
+        }
+
+        return '/admin';
+    }
+
+    /**
+     * Encode a numeric id for use inside URL path segments.
+     * URL-safe base64 without padding.
+     *
+     * @param  mixed  $id
+     * @return string
+     */
+    public static function encodeId($id): string
+    {
+        return rtrim(strtr(base64_encode((string) $id), '+/', '-_'), '=');
+    }
+
+    /**
+     * Decode an id produced by encodeId(). Returns null when invalid.
+     * Also accepts legacy standard-base64 ids for backwards compatibility.
+     *
+     * @param  mixed  $value
+     * @return int|null
+     */
+    public static function decodeId($value): ?int
+    {
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        // Plain numeric ids are accepted as-is (e.g. resend-activation/{id}).
+        if (ctype_digit($value)) {
+            return (int) $value;
+        }
+
+        $normalized = strtr($value, '-_', '+/');
+        $padded = $normalized.str_repeat('=', (4 - strlen($normalized) % 4) % 4);
+        $decoded = base64_decode($padded, true);
+
+        if ($decoded === false || ! ctype_digit($decoded)) {
+            return null;
+        }
+
+        return (int) $decoded;
     }
 }

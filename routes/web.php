@@ -1,44 +1,64 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\CommonController;
-use App\Http\Controllers\RoleController;
-use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ActivityLogController;
-use App\Http\Controllers\PlanController;
 use App\Http\Controllers\AnalyticsController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CommonController;
+use App\Http\Controllers\DiagnosticsController;
+use App\Http\Controllers\PermissionController;
+use App\Http\Controllers\PlanController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SystemHealthController;
+use App\Http\Controllers\UserController;
 use App\Http\Controllers\WelcomeEmailController;
-use Illuminate\Support\Facades\Mail;
-use App\Mail\ResetPasswordMail;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| Web Routes - Enterprise Production Setup
+| Web Routes
 |--------------------------------------------------------------------------
+|
+| Public authentication routes are rate limited on POST. Every admin /
+| management route requires an authenticated session, and mutations plus
+| role/permission management additionally require an admin-level role.
+|
 */
 
-// Public Authentication & Core Routes
-Route::controller(AuthController::class)->group(function () {
-    Route::get('/', 'index')->name('home');
-    Route::get('sysLogin', 'index')->name('sys.login');
-    Route::match(['get', 'post'], 'sysCtrlLogin', 'login')->name('login');
-    Route::match(['get', 'post'], 'register', 'register')->name('register');
-    Route::match(['get', 'post'], 'forgotpassword', 'forgotpassword')->name('forgotpassword');
-    Route::get('/resetpassword/{id}/{token}', 'resetPassword')->name('password.reset');
-    Route::match(['get', 'post'], 'activate/{id}/{token}', 'activateUser')->name('activate.user');
-    Route::match(['get', 'post'], 'resend-activation/{id}', 'resendActivation')->name('resend.activation');
-    Route::match(['get', 'post'], 'send-activation-link/{value}', 'sendActivationLink')->name('send.link');
-    Route::match(['get', 'post'], '/updatepassword/{id}', 'updatePassword')->name('password.update');
-    Route::match(['get', 'post'], 'logout', 'logout')->name('logout');
-});
+// Public: landing & login form.
+Route::get('/', [AuthController::class, 'index'])->name('home');
+Route::get('sysLogin', [AuthController::class, 'index'])->name('sys.login');
 
-// Common Utilities
-Route::match(['get', 'post'], 'chnage_status', [CommonController::class, 'chnage_status'])->name('status.change');
-Route::match(['get', 'post'], 'send-email', [WelcomeEmailController::class, 'sendEmail'])->name('send-email');
+// Public: authentication (POST endpoints are rate limited).
+Route::get('sysCtrlLogin', [AuthController::class, 'login'])->name('login');
+Route::post('sysCtrlLogin', [AuthController::class, 'login'])->middleware('throttle:login');
+Route::get('register', [AuthController::class, 'register'])->name('register');
+Route::post('register', [AuthController::class, 'register'])->middleware('throttle:register');
+Route::get('forgotpassword', [AuthController::class, 'forgotPassword'])->name('forgotpassword');
+Route::post('forgotpassword', [AuthController::class, 'forgotPassword'])->middleware('throttle:password-email');
+Route::get('/resetpassword/{id}/{token}', [AuthController::class, 'resetPassword'])->name('password.reset');
+Route::get('activate/{id}/{token}', [AuthController::class, 'activateUser'])->name('activate.user');
+Route::get('resend-activation/{id}', [AuthController::class, 'resendActivation'])
+    ->name('resend.activation')
+    ->middleware('throttle:password-email');
+Route::get('/updatepassword/{id}', [AuthController::class, 'updatePassword'])->name('password.update');
+Route::post('/updatepassword/{id}', [AuthController::class, 'updatePassword'])->middleware('throttle:password-email');
+
+// Authenticated utility: resend an activation link from the admin user list (AJAX).
+Route::post('send-activation-link/{value}', [AuthController::class, 'sendActivationLink'])
+    ->name('send.link')
+    ->middleware(['auth.session', 'role:superadmin,admin', 'throttle:password-email']);
+
+// Logout is POST-only (CSRF protected) to prevent logout-CSRF attacks.
+Route::post('logout', [AuthController::class, 'logout'])->name('logout');
+
+// Status workflow: POST-only, authenticated admins only.
+Route::post('chnage_status', [CommonController::class, 'chnage_status'])->name('status.change')
+    ->middleware(['auth.session', 'role:superadmin,admin']);
+
+// Welcome e-mail utility: authenticated + rate limited.
+Route::post('send-email', [WelcomeEmailController::class, 'sendEmail'])->name('send-email')
+    ->middleware(['auth.session', 'throttle:password-email']);
 
 // ==========================================
 // Role-Based Admin & Management Panels
@@ -46,67 +66,59 @@ Route::match(['get', 'post'], 'send-email', [WelcomeEmailController::class, 'sen
 $roles = ['superadmin', 'admin', 'author', 'maintainer', 'editor', 'subscriber'];
 
 foreach ($roles as $role) {
-    Route::prefix($role)->name("{$role}.")->group(function () {
+    Route::prefix($role)->name("{$role}.")->middleware('auth.session')->group(function () {
+        // Dashboard landing (any authenticated user).
         Route::get('/', [AuthController::class, 'countList'])->name('dashboard');
-        Route::get('/users', [UserController::class, 'index'])->name('users.index');
-        
-        // Roles & Permissions Management Routes
-        Route::resource('roles', RoleController::class)->only(['index', 'create', 'store', 'destroy']);
-        Route::post('/roles/data', [RoleController::class, 'getTableData'])->name('roles.data');
-        Route::resource('permissions', PermissionController::class)->only(['index', 'store', 'destroy']);
-        Route::post('/permissions/data', [PermissionController::class, 'getTableData'])->name('permissions.data');
 
-        // SaaS Platform Audit, Plans & Analytics Routes
-        Route::get('/activity-logs', [ActivityLogController::class, 'index'])->name('activity_logs.index');
-        Route::get('/activity-logs/data', [ActivityLogController::class, 'getLogsData'])->name('activity_logs.data');
+        // User directory (read access for editors and above).
+        Route::get('/users', [UserController::class, 'index'])->name('users.index')
+            ->middleware('role:superadmin,admin,editor');
+        Route::post('/users/registry-data', [UserController::class, 'getTableData'])->name('users.data')
+            ->middleware('role:superadmin,admin,editor');
+        Route::post('/users/profile-details', [UserController::class, 'getUserDetails'])->name('users.details')
+            ->middleware('role:superadmin,admin,editor');
+
+        // User mutations (admin-level only).
+        Route::post('/users/persistence-store', [UserController::class, 'store'])->name('users.store')
+            ->middleware('role:superadmin,admin');
+        Route::post('/users/trash-toggle', [UserController::class, 'toggleTrash'])->name('users.toggleTrash')
+            ->middleware('role:superadmin,admin');
+
+        // Roles & Permissions management (admin-level only).
+        Route::resource('roles', RoleController::class)->only(['index', 'create', 'store', 'destroy'])
+            ->middleware('role:superadmin,admin');
+        Route::post('/roles/data', [RoleController::class, 'getTableData'])->name('roles.data')
+            ->middleware('role:superadmin,admin');
+        Route::resource('permissions', PermissionController::class)->only(['index', 'store', 'destroy'])
+            ->middleware('role:superadmin,admin');
+        Route::post('/permissions/data', [PermissionController::class, 'getTableData'])->name('permissions.data')
+            ->middleware('role:superadmin,admin');
+
+        // Audit log (admin-level only).
+        Route::get('/activity-logs', [ActivityLogController::class, 'index'])->name('activity_logs.index')
+            ->middleware('role:superadmin,admin');
+        Route::get('/activity-logs/data', [ActivityLogController::class, 'getLogsData'])->name('activity_logs.data')
+            ->middleware('role:superadmin,admin');
+
+        // SaaS & self-service pages (any authenticated user).
         Route::get('/plans', [PlanController::class, 'index'])->name('plans.index');
         Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics.index');
-
-        // User Profile & System Health Routes
         Route::get('/profile', [ProfileController::class, 'index'])->name('profile.index');
-        Route::post('/profile/update', [ProfileController::class, 'update'])->name('admin.profile.update');
-        Route::get('/health', [SystemHealthController::class, 'index'])->name('health.index');
+        Route::post('/profile/update', [ProfileController::class, 'update'])->name('profile.update');
 
-        // Production-Optimized & Clean Named Routes
-        Route::match(['get', 'post'], '/users/registry-data', [UserController::class, 'getTableData'])->name('users.data');
-        Route::match(['get', 'post'], '/users/persistence-store', [UserController::class, 'store'])->name('users.store');
-        Route::post('/users/profile-details', [UserController::class, 'getUserDetails'])->name('users.details');
-        Route::post('/users/trash-toggle', [UserController::class, 'toggleTrash'])->name('users.toggleTrash');
+        // System internals (admin-level only).
+        Route::get('/health', [SystemHealthController::class, 'index'])->name('health.index')
+            ->middleware('role:superadmin,admin');
     });
 }
 
 // ==========================================
-// Diagnostics & Testing Routes (Dev/Staging)
+// Diagnostics (local/staging + admins only)
 // ==========================================
-Route::prefix('diagnostics')->group(function () {
-    Route::get('/test-job', function () {
-        App\Jobs\TestJob::dispatch('This is a test message.');
-        return 'Test job dispatched successfully!';
+if (app()->environment(['local', 'staging', 'testing'])) {
+    Route::prefix('diagnostics')->middleware(['auth.session', 'role:superadmin,admin'])->group(function () {
+        Route::get('/test-job', [DiagnosticsController::class, 'testJob'])->name('diagnostics.job');
+        Route::get('/test-email', [DiagnosticsController::class, 'testEmail'])->name('diagnostics.email');
+        Route::get('/send-reset-email', [DiagnosticsController::class, 'sendResetEmail'])->name('diagnostics.reset-email');
     });
-
-    Route::get('/test-email', function () {
-        try {
-            Mail::raw('Hello World! This is a test email.', function ($message) {
-                $message->to('sajidahmad.9005@gmail.com')->subject('Test Email');
-            });
-            return "Email sent successfully!";
-        } catch (\Exception $e) {
-            return "Failed to send email: " . $e->getMessage();
-        }
-    });
-
-    Route::get('/send-reset-email', function () {
-        $user = (object) [
-            'name' => 'Sajid Ahmad',
-            'email' => 'sajidahmad.9005@gmail.com',
-        ];
-        $resetLink = url('password-reset/sample-token');
-
-        try {
-            Mail::to($user->email)->send(new ResetPasswordMail($user, $resetLink));
-            return "Email sent successfully to {$user->email}.";
-        } catch (\Exception $e) {
-            return "Failed to send email: " . $e->getMessage();
-        }
-    });
-});
+}

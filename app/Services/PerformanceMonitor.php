@@ -188,18 +188,27 @@ class PerformanceMonitor
     private function parseMemoryLimit(string $memoryLimit): int
     {
         $memoryLimit = trim($memoryLimit);
+
+        // "-1" means unlimited: use a very large number so health ratios stay sane.
+        if ($memoryLimit === '' || $memoryLimit === '-1') {
+            return PHP_INT_MAX;
+        }
+
         $last = strtolower($memoryLimit[strlen($memoryLimit) - 1]);
         $value = (int) $memoryLimit;
 
         switch ($last) {
             case 'g':
                 $value *= 1024;
+                // no break
             case 'm':
                 $value *= 1024;
+                // no break
             case 'k':
                 $value *= 1024;
+                break;
         }
 
-        return $value;
+        return $value > 0 ? $value : PHP_INT_MAX;
     }
 }

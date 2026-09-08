@@ -203,5 +203,5 @@ blink {
         <div class="layout-container">
 
         <!-- Sidebar Section -->
-        @include('Admin.templates.sidebar')
-        @include('Admin.templates.navbar')
+        @include('admin.templates.sidebar')
+        @include('admin.templates.navbar')

@@ -19,10 +19,12 @@ class User extends Authenticatable
     /**
      * The attributes that are mass assignable.
      *
+     * NOTE: `id` and the token columns are intentionally NOT mass assignable.
+     * Tokens are written via forceFill() inside AuthLibrary::generateToken().
+     *
      * @var array<int, string>
      */
     protected $fillable = [
-        'id',
         'name',
         'email',
         'avatar',
@@ -33,12 +35,7 @@ class User extends Authenticatable
         'plan',
         'email_verified_at',
         'password',
-        'reset_token',
-        'reset_expire',
         'activated',
-        'activate_token',
-        'activate_expire',
-        'remember_token',
         'status',
         'trash',
     ];

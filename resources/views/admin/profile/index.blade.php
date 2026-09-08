@@ -1,4 +1,4 @@
-@include('Admin.templates.header')
+@include('admin.templates.header')
 
 @php
     $role = session('role');
@@ -90,5 +90,5 @@
         </div>
 
     </div>
-    @include('Admin.templates.footer')
+    @include('admin.templates.footer')
 </div>

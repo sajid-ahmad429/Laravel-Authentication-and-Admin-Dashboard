@@ -1,7 +1,9 @@
 <!-- Menu -->
 @php
-    $role = session('role') ?? (auth()->check() ? auth()->user()->roles->first()?->name : 'superadmin');
-    $redirectAction = !empty($role) ? $role : 'superadmin';
+    // NOTE: `roles` is also a plain string column on users, so the Spatie role
+    // must be read via getRoleNames() — `->roles->first()` would fatal.
+    $role = session('role') ?? (auth()->check() ? (auth()->user()->getRoleNames()->first() ?? 'subscriber') : 'subscriber');
+    $redirectAction = !empty($role) ? $role : 'admin';
     $activeMenu = $activeMenu ?? '';
     $user = auth()->user();
 @endphp
@@ -152,11 +154,13 @@
                         <div data-i18n="My Profile">My Profile</div>
                     </a>
                 </li>
+                @if(!$user || $user->hasAnyRole(['superadmin', 'admin']))
                 <li class="menu-item {{ $activeMenu === 'health' ? 'active' : '' }}">
                     <a href="{{ url($redirectAction . '/health') }}" class="menu-link">
                         <div data-i18n="System Health">System Health</div>
                     </a>
                 </li>
+                @endif
             </ul>
         </li>
     </ul>

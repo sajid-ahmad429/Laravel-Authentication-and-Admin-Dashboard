@@ -46,11 +46,6 @@ export default defineConfig({
     // CSS optimization
     css: {
         devSourcemap: true,
-        preprocessorOptions: {
-            scss: {
-                additionalData: `@import "resources/scss/variables.scss";`,
-            },
-        },
     },
     // Development server optimization
     server: {

@@ -17,7 +17,7 @@
                     </tr>
                     <tr>
                         <td style="padding: 40px; color: #334155; font-size: 16px; line-height: 26px;">
-                            {!! $messageContent !!}
+                            {{ $messageContent }}
                         </td>
                     </tr>
                     <tr>

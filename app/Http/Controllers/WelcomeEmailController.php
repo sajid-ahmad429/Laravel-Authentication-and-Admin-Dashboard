@@ -2,27 +2,36 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
-use App\Mail\WelcomeMail;
 use App\Jobs\SendWelcomeEmail;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class WelcomeEmailController extends Controller
 {
-    public function __construct(){
+    /**
+     * Queue a welcome e-mail to the currently authenticated user.
+     * (Previously this public endpoint mailed a hardcoded address with no
+     * authentication, rate limiting, or error sanitization.)
+     */
+    public function sendEmail(Request $request): JsonResponse
+    {
+        $to = auth()->user()->email ?? session('email');
 
-    }
+        if (empty($to)) {
+            return response()->json(['error' => 'No recipient available for the welcome e-mail.'], 422);
+        }
 
-    public function sendEmail(){
-        $to = "phpdeveloper.9005@gmail.com";
-        $message = "Welcome to Labridge";
+        $message = 'Welcome to the Admin Dashboard! Your account is ready.';
 
         try {
-            Mail::to($to)->send(new WelcomeMail($message));
-            // SendWelcomeEmail::dispatch($to, $message);
-            return response()->json(['message' => 'Email sent successfully!']);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
+            SendWelcomeEmail::dispatch($to, $message);
+
+            return response()->json(['message' => 'Welcome e-mail queued successfully!']);
+        } catch (\Throwable $e) {
+            Log::error('Failed to queue welcome e-mail: '.$e->getMessage());
+
+            return response()->json(['error' => 'Could not send the e-mail. Please try again later.'], 500);
         }
     }
 }

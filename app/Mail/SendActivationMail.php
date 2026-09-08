@@ -41,7 +41,7 @@ class SendActivationMail extends Mailable implements ShouldQueue
     public function content(): Content
     {
         return new Content(
-            view: 'Admin.emails.activateaccount', // This should be the view path where you want to display the email content.
+            view: 'admin.emails.activateaccount', // This should be the view path where you want to display the email content.
             with: [
                 'name' => $this->name,
                 'activationLink' => $this->activationLink,
