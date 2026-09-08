@@ -2,93 +2,102 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Spatie\Permission\Models\Permission;
-use Illuminate\Http\RedirectResponse;
-use Illuminate\View\View;
 
 class PermissionController extends Controller
 {
-    public function index(): View
+    public function index()
     {
-        $activeMenu = 'permissions';
-        return view('admin.permissions.index', compact('activeMenu'));
+        return view('admin.permissions.index', [
+            'activeMenu' => 'permissions',
+        ]);
     }
 
-    public function getTableData(Request $request)
+    /**
+     * Server-side data feed for the permissions table (Tabulator contract).
+     */
+    public function getTableData(Request $request): JsonResponse
     {
-        if (!$request->ajax()) {
-            return response()->json(['status' => 0, 'message' => 'Invalid Request'], 400);
-        }
-
         $validated = $request->validate([
-            'start'          => ['required', 'integer', 'min:0'],
-            'length'         => ['required', 'integer', 'min:1'],
-            'search.value'   => ['nullable', 'string', 'max:100'],
+            'page'     => ['sometimes', 'integer', 'min:1'],
+            'size'     => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'sort_dir' => ['sometimes', 'in:asc,desc'],
+            'search'   => ['sometimes', 'nullable', 'string', 'max:100'],
         ]);
+
+        $page   = (int) ($validated['page'] ?? 1);
+        $size   = (int) ($validated['size'] ?? 10);
+        $dir    = $validated['sort_dir'] ?? 'desc';
+        $search = trim((string) ($validated['search'] ?? ''));
 
         $query = Permission::query();
-        $recordsTotal = Permission::count();
 
-        if (!empty($validated['search']['value'])) {
-            $search = $validated['search']['value'];
-            $query->where('name', 'LIKE', "%{$search}%");
+        if ($search !== '') {
+            $like = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
+            $query->where('name', 'LIKE', $like);
         }
 
-        $recordsFiltered = $query->count();
-        $permissions = $query->skip($validated['start'])->take($validated['length'])->orderBy('id', 'desc')->get();
+        $total = (clone $query)->count();
 
-        $data = [];
-        foreach ($permissions as $permission) {
-            $actionButtons = '
-            <div class="dropdown">
-                <button type="button" class="btn p-0 dropdown-toggle hide-arrow" data-bs-toggle="dropdown">
-                    <i class="mdi mdi-dots-vertical"></i>
-                </button>
-                <div class="dropdown-menu">
-                    <a class="dropdown-item" href="javascript:void(0);"><i class="mdi mdi-pencil-outline me-1"></i> Edit</a>
-                    <form action="' . route('admin.permissions.destroy', $permission->id) . '" method="POST" style="display:inline;">
-                        ' . csrf_field() . '
-                        ' . method_field('DELETE') . '
-                        <button type="submit" class="dropdown-item text-danger" onclick="return confirm(\'Are you sure?\')"><i class="mdi mdi-trash-can-outline me-1"></i> Trash</button>
-                    </form>
-                </div>
-            </div>';
-
-            $data[] = [
-                'id'          => $permission->id,
-                'name'        => '<span class="badge bg-label-primary">' . e($permission->name) . '</span>',
-                'guard_name'  => e($permission->guard_name),
-                'actions'     => '<div class="text-center">' . $actionButtons . '</div>'
-            ];
-        }
+        $permissions = $query
+            ->orderBy('id', $dir)
+            ->forPage($page, $size)
+            ->get();
 
         return response()->json([
-            'draw'            => intval($request->input('draw')),
-            'recordsTotal'    => $recordsTotal,
-            'recordsFiltered' => $recordsFiltered,
-            'data'            => $data
+            'last_page'    => (int) max(1, ceil($total / $size)),
+            'total'        => $total,
+            'current_page' => $page,
+            'data'         => $permissions->map(fn ($permission) => [
+                'id'         => $permission->id,
+                'name'       => $permission->name,
+                'guard_name' => $permission->guard_name,
+                'created'    => optional($permission->created_at)->format('d M Y'),
+            ])->all(),
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|unique:permissions,name',
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'min:2', 'max:100', 'regex:/^[a-z0-9\-\s]+$/', Rule::unique('permissions', 'name')],
+        ], [
+            'name.regex' => 'Permission name may only contain lowercase letters, numbers, dashes and spaces.',
         ]);
 
-        Permission::create(['name' => strtolower($request->input('name'))]);
+        Permission::create(['name' => strtolower(trim($validated['name']))]);
 
-        $roleName = strtolower(session('role', 'admin'));
-        return redirect()->route($roleName . '.permissions.index')->with('success', 'Permission created successfully.');
+        return redirect()
+            ->route('panel.permissions.index')
+            ->with('success', 'Permission created successfully.');
     }
 
-    public function destroy($id): RedirectResponse
+    public function destroy(Request $request): JsonResponse
     {
-        $permission = Permission::findOrFail($id);
+        $validated = $request->validate(['id' => ['required', 'integer', 'min:1']]);
+
+        $permission = Permission::find((int) $validated['id']);
+
+        if (! $permission) {
+            return response()->json(['status' => 0, 'message' => 'Permission not found.'], 404);
+        }
+
+        $inUse = \Illuminate\Support\Facades\DB::table('role_has_permissions')
+            ->where('permission_id', $permission->id)
+            ->count();
+
+        if ($inUse > 0) {
+            return response()->json([
+                'status'  => 0,
+                'message' => "This permission is used by {$inUse} role(s) and cannot be deleted.",
+            ], 409);
+        }
+
         $permission->delete();
 
-        $roleName = strtolower(session('role', 'admin'));
-        return redirect()->route($roleName . '.permissions.index')->with('success', 'Permission deleted successfully.');
+        return response()->json(['status' => 1, 'message' => 'Permission deleted successfully.']);
     }
 }

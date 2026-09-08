@@ -1,827 +1,433 @@
+@section('title', 'User Management')
 @include('Admin.templates.header')
 
 @php
-    $role = session('role');
-    $roleName = !empty($role) && in_array($role, ['superadmin', 'admin']) ? $role : 'admin';
+    $isSuperadmin = strtolower(session('role', '')) === 'superadmin';
 @endphp
 
-<!-- SweetAlert2 CSS -->
+
+@push('styles')
 <style>
-    .dataTables_wrapper .dataTables_length select,
-    .dataTables_wrapper .dataTables_filter input {
-        border: 1px solid #dbdade !important;
-        border-radius: 0.5rem !important;
-        padding: 0.45rem 0.9rem !important;
-        background-color: #fff !important;
-        color: #6f6b7d !important;
-        font-size: 0.9375rem;
-    }
-
-    .dataTables_wrapper .dataTables_filter input:focus,
-    .dataTables_wrapper .dataTables_length select:focus {
-        border-color: #7367f0 !important;
-        box-shadow: 0 0.125rem 0.25rem rgba(115, 103, 240, 0.15) !important;
-        outline: none;
-    }
-
-    table.dataTable.table-striped>tbody>tr:nth-of-type(odd) {
-        background-color: #fbfbfd !important;
-    }
-
-    table.dataTable tbody tr:hover {
-        background-color: #f6f5fa !important;
-    }
-
-    .dt-buttons .btn {
-        border-radius: 0.375rem;
-        font-weight: 500;
-        padding: 0.438rem 0.875rem;
-        transition: all 0.2s ease-in-out;
-    }
-
-    .dt-buttons .btn:hover {
-        transform: translateY(-1px);
-    }
-
-    /* Fallback protection to clear backdrop bugs */
-    body:not(.offcanvas-open) .offcanvas-backdrop {
-        display: none !important;
-    }
-
-    .dataTables_filter {
-        position: relative;
-    }
-
-    .dataTables_filter input {
-        padding-left: 35px !important;
-        /* Text icon ke upar na aaye isliye padding */
-    }
-
-    .dataTables_filter label {
-        position: relative;
-        display: flex;
-        align-items: center;
-    }
-
-    .dataTables_filter label::before {
-        content: "\F0349";
-        /* Material Design Icon code for search */
-        font-family: "Material Design Icons";
-        position: absolute;
-        left: 7px;
-        /* Icon ko thoda aur andar shift kiya */
-        top: 50%;
-        transform: translateY(-50%);
-        color: #a8b1bc;
-        font-size: 18px;
-        pointer-events: none;
-        /* Clickable banne se rokne ke liye taaki input focus me rahe */
-    }
+    .adt-stat-card { transition: transform .18s ease, box-shadow .18s ease; }
+    .adt-stat-card:hover { transform: translateY(-2px); box-shadow: 0 .5rem 1rem rgba(48,44,80,.08) !important; }
+    .users-offcanvas .form-label { font-size: .8125rem; font-weight: 600; color: #6f6b7d; margin-bottom: .35rem; }
+    .users-offcanvas .req::after { content: " *"; color: #ea5455; }
+    .users-offcanvas .invalid-feedback { display: block; }
 </style>
+@endpush
 
 <div class="content-wrapper">
     <div class="container-xxl flex-grow-1 container-p-y">
 
-        <!-- Top Analytics Statistics Cards -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+            <div>
+                <h4 class="fw-bold mb-1">User Management</h4>
+                <p class="text-muted mb-0">Create, manage and audit every account in your workspace.</p>
+            </div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{{ route('panel.dashboard') }}">Home</a></li>
+                    <li class="breadcrumb-item active">Users</li>
+                </ol>
+            </nav>
+        </div>
+
+        {{-- ======================= Stat cards ======================= --}}
         <div class="row g-4 mb-4">
-            <div class="col-sm-6 col-xl-4">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <p class="text-muted fw-semibold mb-1">Total Users</p>
-                                <div class="d-flex align-items-center">
-                                    <h4 class="mb-2 me-2 fw-bold text-dark" id="statTotal">{{ $totalUsers ?? 0 }}</h4>
-                                    <span class="badge bg-label-success rounded-pill mb-2">+29%</span>
-                                </div>
-                                <small class="text-muted">Overall registered accounts</small>
-                            </div>
-                            <div class="avatar avatar-lg">
-                                <div class="avatar-initial bg-label-primary rounded-circle p-3">
-                                    <i class="mdi mdi-account-outline mdi-24px"></i>
-                                </div>
-                            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="card adt-stat-card h-100 border-0 shadow-sm">
+                    <div class="card-body d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted fw-semibold mb-1 small">Total Users</p>
+                            <h4 class="mb-0 fw-bold" id="statTotal">{{ $stats['total'] }}</h4>
                         </div>
+                        <div class="stat-icon primary"><i class="mdi mdi-account-group-outline"></i></div>
                     </div>
                 </div>
             </div>
-
-            <div class="col-sm-6 col-xl-4">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <p class="text-muted fw-semibold mb-1">Active Users</p>
-                                <div class="d-flex align-items-center">
-                                    <h4 class="mb-2 me-2 fw-bold text-dark" id="statActive">{{ $active ?? 0 }}</h4>
-                                    <span class="badge bg-label-danger rounded-pill mb-2">-14%</span>
-                                </div>
-                                <small class="text-muted">Last week analytics</small>
-                            </div>
-                            <div class="avatar avatar-lg">
-                                <div class="avatar-initial bg-label-success rounded-circle p-3">
-                                    <i class="mdi mdi-account-check-outline mdi-24px"></i>
-                                </div>
-                            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="card adt-stat-card h-100 border-0 shadow-sm">
+                    <div class="card-body d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted fw-semibold mb-1 small">Active</p>
+                            <h4 class="mb-0 fw-bold" id="statActive">{{ $stats['active'] }}</h4>
                         </div>
+                        <div class="stat-icon success"><i class="mdi mdi-account-check-outline"></i></div>
                     </div>
                 </div>
             </div>
-
-            <div class="col-sm-6 col-xl-4">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <p class="text-muted fw-semibold mb-1">In-Active Users</p>
-                                <div class="d-flex align-items-center">
-                                    <h4 class="mb-2 me-2 fw-bold text-dark" id="statInactive">{{ $inactive ?? 0 }}</h4>
-                                    <span class="badge bg-label-success rounded-pill mb-2">+42%</span>
-                                </div>
-                                <small class="text-muted">Last week analytics</small>
-                            </div>
-                            <div class="avatar avatar-lg">
-                                <div class="avatar-initial bg-label-warning rounded-circle p-3">
-                                    <i class="mdi mdi-account-search mdi-24px"></i>
-                                </div>
-                            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="card adt-stat-card h-100 border-0 shadow-sm">
+                    <div class="card-body d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted fw-semibold mb-1 small">Inactive</p>
+                            <h4 class="mb-0 fw-bold" id="statInactive">{{ $stats['inactive'] }}</h4>
                         </div>
+                        <div class="stat-icon warning"><i class="mdi mdi-account-off-outline"></i></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="card adt-stat-card h-100 border-0 shadow-sm">
+                    <div class="card-body d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted fw-semibold mb-1 small">Awaiting Activation</p>
+                            <h4 class="mb-0 fw-bold" id="statUnactivated">{{ $stats['unactivated'] }}</h4>
+                        </div>
+                        <div class="stat-icon info"><i class="mdi mdi-email-fast-outline"></i></div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Users List Table Card -->
+        {{-- ======================= Table card ======================= --}}
         <div class="card border-0 shadow-sm">
-            <div
-                class="card-header border-bottom bg-transparent py-3 d-flex justify-content-between align-items-center flex-wrap gap-3">
-                <div>
-                    <h5 class="card-title fw-bold mb-1 text-dark">User Management Dashboard</h5>
-                    <p class="text-muted mb-0 small">Manage system user entries, roles, export tools and statuses
-                        seamlessly.</p>
+            <div class="adt-toolbar" id="usersToolbar">
+                <div class="adt-search">
+                    <i class="mdi mdi-magnify adt-search-icon"></i>
+                    <input type="search" id="userSearch" placeholder="Search name, email, company, country…"
+                        autocomplete="off" aria-label="Search users">
                 </div>
-                <div>
-                    {{-- <button class="btn btn-primary shadow-sm" type="button" data-bs-toggle="offcanvas"
-                        data-bs-target="#offcanvasAddUser" id="openAddUserPanel">
-                        <i class="mdi mdi-plus me-1"></i> Add New User
-                    </button> --}}
-                </div>
-            </div>
 
-            <div class="card-body px-4 py-4">
-                <div class="card-datatable table-responsive">
-                    <!-- Added w-full and fixed the width property typo -->
-                    <table class="datatables table table-hover align-middle border-top w-full" id="usersTable"
-                        style="width: 100%;">
-                        <thead class="bg-slate-50/75 backdrop-blur-md border-y border-slate-200/80 sticky top-0 z-10">
-                            <tr>
-                                <th
-                                    class="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer group">
-                                    <div class="flex items-center gap-2">
-                                        <span>ID</span>
-                                        <span class="text-slate-400 group-hover:text-indigo-600 transition-colors">
-                                            <i class="mdi mdi-swap-vertical text-sm"></i>
-                                        </span>
-                                    </div>
-                                </th>
-                                <th
-                                    class="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer group">
-                                    <div class="flex items-center gap-2">
-                                        <span>Full Name</span>
-                                        <span class="text-slate-400 group-hover:text-indigo-600 transition-colors">
-                                            <i class="mdi mdi-swap-vertical text-sm"></i>
-                                        </span>
-                                    </div>
-                                </th>
-                                <th
-                                    class="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer group">
-                                    <div class="flex items-center gap-2">
-                                        <span>Email Address</span>
-                                        <span class="text-slate-400 group-hover:text-indigo-600 transition-colors">
-                                            <i class="mdi mdi-swap-vertical text-sm"></i>
-                                        </span>
-                                    </div>
-                                </th>
-                                <th
-                                    class="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
-                                    Role</th>
-                                <th
-                                    class="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
-                                    Plan</th>
-                                <th
-                                    class="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
-                                    Country</th>
-                                <th
-                                    class="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
-                                    Status</th>
-                                <th
-                                    class="py-3.5 px-4 text-center text-xs font-bold uppercase tracking-wider text-slate-500">
-                                    Actions</th>
-                            </tr>
-                        </thead>
-                    </table>
+                <div class="adt-filters" id="statusChips">
+                    <button type="button" class="adt-chip active" data-status="">All</button>
+                    <button type="button" class="adt-chip" data-status="1">Active</button>
+                    <button type="button" class="adt-chip" data-status="0">Inactive</button>
+                    <select id="roleFilter" class="adt-chip" style="padding-right:1.6rem" aria-label="Filter by role">
+                        <option value="">All roles</option>
+                        @foreach($roles as $roleKey => $roleLabel)
+                            @if($isSuperadmin || $roleKey !== 'superadmin')
+                                <option value="{{ $roleKey }}">{{ ucwords($roleKey) }}</option>
+                            @endif
+                        @endforeach
+                    </select>
+                </div>
+
+                <div class="adt-actions">
+                    <div class="dropdown">
+                        <button class="adt-chip dropdown-toggle" data-bs-toggle="dropdown" type="button">
+                            <i class="mdi mdi-export-variant me-1"></i>Export
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><button class="dropdown-item" type="button" id="exportCsv"><i class="mdi mdi-file-document-outline me-2"></i>CSV</button></li>
+                            <li><button class="dropdown-item" type="button" id="exportJson"><i class="mdi mdi-code-json me-2"></i>JSON</button></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <button class="dropdown-item" type="button" id="trashToggle">
+                                    <i class="mdi mdi-delete-outline me-2"></i><span id="trashToggleLabel">View Trash</span>
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                    <button class="btn btn-primary d-flex align-items-center gap-1" type="button" id="addUserBtn">
+                        <i class="mdi mdi-plus"></i> <span>Add User</span>
+                    </button>
                 </div>
             </div>
 
-            <!-- Offcanvas to add/edit user -->
-            <div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasAddUser"
-                aria-labelledby="offcanvasAddUserLabel">
-                <div class="offcanvas-header border-bottom bg-light">
-                    <h5 id="offcanvasAddUserLabel" class="offcanvas-title fw-bold text-dark">Add New User Entity</h5>
-                    <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas"
-                        aria-label="Close"></button>
-                </div>
-                <div class="offcanvas-body mx-0 flex-grow-0 h-100 p-4">
-                    <form class="add-new-user pt-0" id="addNewUserForm" action="{{ route($roleName . '.users.store') }}"
-                        method="post">
-                        @csrf
-                        <input type="hidden" id="userId" value="0" name="user_id" />
-
-                        <div class="form-floating form-floating-outline mb-4 fv-row">
-                            <input type="text" class="form-control required" data-bind="name" id="userFullname"
-                                placeholder="John Doe" name="userFullname" aria-label="John Doe" />
-                            <label for="userFullname">Full Name <span class="text-danger">*</span></label>
-                        </div>
-
-                        <div class="form-floating form-floating-outline mb-4 fv-row">
-                            <input type="text" id="userEmail" class="form-control required" data-bind="email"
-                                placeholder="Email" aria-label="john.doe@example.com" name="userEmail" />
-                            <label for="userEmail">Email <span class="text-danger">*</span></label>
-                        </div>
-
-                        <div class="form-floating form-floating-outline mb-4 fv-row">
-                            <input type="text" id="userContact" class="form-control phone-mask required"
-                                maxlength="10" data-bind="mobileNumber" placeholder="Contact Number"
-                                aria-label="john.doe@example.com" name="userContact"
-                                onkeypress="return isNumberKey(event, this)" />
-                            <label for="userContact">Contact <span class="text-danger">*</span></label>
-                        </div>
-
-                        <div class="form-floating form-floating-outline mb-4 fv-row">
-                            <input type="text" id="companyName" class="form-control required"
-                                placeholder="Web Developer" aria-label="jdoe1" name="companyName" />
-                            <label for="companyName">Company <span class="text-danger">*</span></label>
-                        </div>
-
-                        <div class="form-floating form-floating-outline mb-4 fv-row">
-                            <select id="country" name="country" class="select2 form-select select2Required">
-                                <option value="">Select Country</option>
-                                <option value="Australia">Australia</option>
-                                <option value="Bangladesh">Bangladesh</option>
-                                <option value="Belarus">Belarus</option>
-                                <option value="Brazil">Brazil</option>
-                                <option value="Canada">Canada</option>
-                                <option value="China">China</option>
-                                <option value="France">France</option>
-                                <option value="Germany">Germany</option>
-                                <option value="India">India</option>
-                                <option value="Indonesia">Indonesia</option>
-                                <option value="Israel">Israel</option>
-                                <option value="Italy">Italy</option>
-                                <option value="Japan">Japan</option>
-                                <option value="Korea">Korea, Republic of</option>
-                                <option value="Mexico">Mexico</option>
-                                <option value="Philippines">Philippines</option>
-                                <option value="Russia">Russian Federation</option>
-                                <option value="South Africa">South Africa</option>
-                                <option value="Thailand">Thailand</option>
-                                <option value="Turkey">Turkey</option>
-                                <option value="Ukraine">Ukraine</option>
-                                <option value="United Arab Emirates">United Arab Emirates</option>
-                                <option value="United Kingdom">United Kingdom</option>
-                                <option value="United States">United States</option>
-                            </select>
-                            <label for="country">Country <span class="text-danger">*</span></label>
-                        </div>
-
-                        <div class="form-floating form-floating-outline mb-4 fv-row">
-                            <select id="userRole" class="form-select required" name="user-role">
-                                <option value="">Select Roles</option>
-                                <option value="superadmin">Superadmin</option>
-                                <option value="admin">Admin</option>
-                                <option value="author">Author</option>
-                                <option value="maintainer">Maintainer</option>
-                                <option value="editor">Editor</option>
-                                <option value="subscriber">Subscriber</option>
-                            </select>
-                            <label for="userRole">User Role <span class="text-danger">*</span></label>
-                        </div>
-
-                        <div class="form-floating form-floating-outline mb-4 fv-row">
-                            <select id="userPlan" class="form-select required" name="user-plan">
-                                <option value="">Select Plans</option>
-                                <option value="basic">Basic</option>
-                                <option value="professional">Professional</option>
-                                <option value="enterprise">Enterprise</option>
-                                <option value="company">Company</option>
-                                <option value="team">Team</option>
-                            </select>
-                            <label for="userPlan">Select Plan <span class="text-danger">*</span></label>
-                        </div>
-
-                        <div class="d-flex gap-3 mt-4">
-                            <button type="submit" class="btn btn-primary flex-fill shadow-sm"
-                                id="submitFormBtn">Save Entity</button>
-                            <button type="reset" class="btn btn-outline-secondary"
-                                data-bs-dismiss="offcanvas">Cancel</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
+            <div class="px-2 pb-2" id="usersTable"></div>
         </div>
     </div>
     @include('Admin.templates.footer')
 </div>
 
+{{-- ======================= Add / Edit offcanvas ======================= --}}
+<div class="offcanvas offcanvas-end users-offcanvas" tabindex="-1" id="offcanvasUserForm" aria-labelledby="userFormTitle">
+    <div class="offcanvas-header border-bottom">
+        <h5 class="offcanvas-title fw-bold" id="userFormTitle">Add New User</h5>
+        <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body p-4">
+        <form id="userForm" novalidate>
+            <input type="hidden" name="user_id" id="userId" value="0">
+
+            <div class="mb-3">
+                <label class="form-label req" for="userFullname">Full Name</label>
+                <input type="text" class="form-control @error('userFullname') is-invalid @enderror" id="userFullname"
+                    name="userFullname" placeholder="e.g. Jane Doe" maxlength="120" required>
+                <div class="invalid-feedback" data-error-for="userFullname"></div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label req" for="userEmail">Email Address</label>
+                <input type="email" class="form-control" id="userEmail" name="userEmail"
+                    placeholder="jane@example.com" maxlength="255" required>
+                <div class="invalid-feedback" data-error-for="userEmail"></div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="userContact">Contact Number</label>
+                <input type="tel" class="form-control" id="userContact" name="userContact"
+                    placeholder="+1 555 000 1234" maxlength="15">
+                <div class="invalid-feedback" data-error-for="userContact"></div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="companyName">Company</label>
+                <input type="text" class="form-control" id="companyName" name="companyName" maxlength="150">
+                <div class="invalid-feedback" data-error-for="companyName"></div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="country">Country</label>
+                <input type="text" class="form-control" id="country" name="country" maxlength="100" list="countryList">
+                <datalist id="countryList">
+                    @foreach(['Australia','Brazil','Canada','China','France','Germany','India','Indonesia','Italy','Japan','Mexico','Netherlands','Philippines','Russia','Singapore','South Africa','Spain','Thailand','Turkey','United Arab Emirates','United Kingdom','United States'] as $c)
+                        <option value="{{ $c }}"></option>
+                    @endforeach
+                </datalist>
+                <div class="invalid-feedback" data-error-for="country"></div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label req" for="userRole">Role</label>
+                <select class="form-select" id="userRole" name="user-role" required>
+                    <option value="">Select role…</option>
+                    @foreach($roles as $roleKey => $roleLabel)
+                        @if($isSuperadmin || $roleKey !== 'superadmin')
+                            <option value="{{ $roleKey }}">{{ $roleLabel }}</option>
+                        @endif
+                    @endforeach
+                </select>
+                <div class="form-text">Accounts can only be assigned roles at or below your own level.</div>
+                <div class="invalid-feedback" data-error-for="user-role"></div>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label" for="userPlan">Plan</label>
+                <select class="form-select" id="userPlan" name="user-plan">
+                    <option value="">No plan</option>
+                    @foreach($plans as $plan)
+                        <option value="{{ $plan }}">{{ ucwords($plan) }}</option>
+                    @endforeach
+                </select>
+                <div class="invalid-feedback" data-error-for="user-plan"></div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-fill" id="submitUserBtn">Save User</button>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@push('scripts')
 <script>
-    $(document).ready(function() {
-        $.ajaxSetup({
-            headers: {
-                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-            }
-        });
+document.addEventListener('DOMContentLoaded', function () {
+    var dataUrl   = '{{ route('panel.users.data') }}';
+    var storeUrl  = '{{ route('panel.users.store') }}';
+    var detailUrl = '{{ route('panel.users.details') }}';
+    var trashUrl  = '{{ route('panel.users.trash') }}';
+    var statusUrl = '{{ route('panel.users.status') }}';
+    var resendUrl = '{{ route('panel.users.resend') }}';
 
-        const table = $('#usersTable').DataTable({
-            processing: true,
-            serverSide: true,
-            responsive: {
-                details: {
-                    display: $.fn.dataTable.Responsive.display.modal({
-                        header: function(row) {
-                            var data = row.data();
-                            return 'Details of ' + data['full_name'];
-                        }
-                    }),
-                    type: 'column',
-                    renderer: function(api, rowIdx, columns) {
-                        var data = $.map(columns, function(col, i) {
-                            return col.title !== '' ?
-                                '<tr data-dt-row="' + col.rowIndex + '" data-dt-column="' +
-                                col.columnIndex + '">' +
-                                '<td>' + col.title + ':</td> ' +
-                                '<td>' + col.data + '</td>' +
-                                '</tr>' : '';
-                        }).join('');
-                        return data ? $('<table class="table"/><tbody />').append(data) : false;
-                    }
-                }
-            },
-            deferRender: true,
-            pageLength: 10,
-            order: [
-                [0, 'desc']
-            ],
-            dom: '<"row align-items-center mx-2"' +
-                '<"col-md-2"l>' +
-                '<"col-md-10"<"dt-action-buttons text-xl-end text-lg-start text-md-end text-start d-flex align-items-center justify-content-end flex-md-row flex-column mb-3 mb-md-0 gap-3"fB>>' +
-                '>t' +
-                '<"row mx-2"' +
-                '<"col-sm-12 col-md-6"i>' +
-                '<"col-sm-12 col-md-6"p>' +
-                '>',
-            // 🛠️ YEH RAHI UPDATED LANGUAGE CONFIGURATION (Icon aur Filtered count ke sath)
-            language: {
-                sLengthMenu: 'Show _MENU_',
-                search: '',
-                searchPlaceholder: 'Search..',
-                info: "Showing _START_ to _END_ of _TOTAL_ entries",
-                infoFiltered: "(filtered from _MAX_ total entries)"
-            },
-            ajax: {
-                url: "{{ route($roleName . '.users.data') }}",
-                type: "POST",
-                dataSrc: function(json) {
-                    if (json.totalActiveRecods) $('#statActive').text(json.totalActiveRecods);
-                    if (json.totalInActiveRecods) $('#statInactive').text(json.totalInActiveRecods);
-                    return json.data;
-                }
-            },
-            columns: [{
-                    data: 'id',
-                    name: 'id',
-                    orderable: false,
-                    render: function(data, type, full, meta) {
-                        return meta.row + 1 + meta.settings._iDisplayStart;
-                    }
+    // ------------------------------------------------------------ table
+    var inTrash = false;
+
+    function updateStats(stats) {
+        if (!stats) return;
+        document.getElementById('statTotal').textContent = stats.total || 0;
+        document.getElementById('statActive').textContent = stats.active || 0;
+        document.getElementById('statInactive').textContent = stats.inactive || 0;
+        document.getElementById('statUnactivated').textContent = stats.unactivated || 0;
+    }
+
+    function statusToggleAction(d, cell) {
+        var next = d.status === 1 ? 0 : 1;
+        AdminUI.confirm({
+            title: (next === 1 ? 'Activate' : 'Deactivate') + ' user?',
+            text: (d.name || 'This user') + ' will be ' + (next === 1 ? 'able to sign in again.' : 'blocked from signing in.'),
+            icon: 'question',
+            confirmText: 'Yes, ' + (next === 1 ? 'activate' : 'deactivate'),
+            confirmColor: next === 1 ? '#28c76f' : '#ff9f43'
+        }).then(function (ok) {
+            if (!ok) return;
+            AdminUI.ajax(statusUrl, { id: d.id, status: next })
+                .then(function (res) {
+                    AdminUI.toast(res.message, 'success');
+                    table.reload(false);
+                })
+                .catch(function (err) { AdminUI.toast(err.message, 'danger'); });
+        });
+    }
+
+    var columns = [
+        { title: 'User', field: 'name', minWidth: 230, formatter: AdminUI.fmt.avatarCell, sorter: function(a, b, aRow, bRow){ return (aRow.getData().name||'').localeCompare(bRow.getData().name||''); } },
+        { title: 'Role', field: 'role', width: 150, formatter: AdminUI.fmt.role.cell, headerSort: false },
+        { title: 'Plan', field: 'plan', width: 130, formatter: AdminUI.fmt.simpleBadge('info', 'mdi-credit-card-outline') },
+        { title: 'Country', field: 'country', width: 130, formatter: AdminUI.fmt.text() },
+        { title: 'Status', field: 'status', width: 120, hozAlign: 'center', headerSort: false, formatter: function(cell){ return AdminUI.fmt.statusToggle(cell, table, statusToggleAction); } },
+        { title: 'Joined', field: 'created_at', width: 120, formatter: AdminUI.fmt.date },
+        {
+            title: 'Actions', field: 'actions', width: 140, hozAlign: 'center', headerSort: false, print: false,
+            formatter: AdminUI.fmt.actions([
+                {
+                    title: 'Edit', icon: 'mdi-pencil-outline',
+                    when: function (d) { return d.can_edit; },
+                    onClick: function (d) { openEditor(d.id); }
                 },
                 {
-                    data: 'full_name',
-                    name: 'full_name',
-                    render: function(data) {
-                        return '<span class="fw-semibold text-dark">' + data + '</span>';
-                    }
-                },
-                {
-                    data: 'email',
-                    name: 'email'
-                },
-                {
-                    data: 'role',
-                    name: 'role',
-                    render: function(data, type, full, meta) {
-                        var $role = full['role'];
-                        var roleBadgeObj = {
-                            Subscriber: '<i class="mdi mdi-account-outline mdi-20px text-primary me-2"></i>',
-                            Author: '<i class="mdi mdi-cog-outline mdi-20px text-warning me-2"></i>',
-                            Maintainer: '<i class="mdi mdi-chart-donut mdi-20px text-success me-2"></i>',
-                            Editor: '<i class="mdi mdi-pencil-outline mdi-20px text-info me-2"></i>',
-                            Admin: '<i class="mdi mdi-laptop mdi-20px text-danger me-2"></i>'
-                        };
-                        return "<span class='text-truncate d-flex align-items-center'>" +
-                            (roleBadgeObj[$role] || '') + $role + '</span>';
-                    }
-                },
-                {
-                    data: 'current_plan',
-                    name: 'current_plan'
-                },
-                {
-                    data: 'country',
-                    name: 'country'
-                },
-                {
-                    data: 'status',
-                    name: 'status',
-                    render: function(data, type, full) {
-                        var id = full['id'];
-                        var encodedId = btoa(id);
-                        var encodedType = btoa('users');
-
-                        if (data == 1) {
-                            return '<button class="badge bg-label-success btn btn-sm border-0" onclick="updateStatus(\'' +
-                                encodedId + '\', 0, \'' + encodedType +
-                                '\', \'users\')">Active</button>';
-                        } else {
-                            return '<button class="badge bg-label-secondary btn btn-sm border-0" onclick="updateStatus(\'' +
-                                encodedId + '\', 1, \'' + encodedType +
-                                '\', \'users\')">Inactive</button>';
-                        }
-                    }
-                },
-                {
-                    data: 'actions',
-                    name: 'actions',
-                    orderable: false,
-                    searchable: false,
-                    className: 'text-center',
-                    render: function(data, type, full) {
-                        var userId = full['id'];
-                        var encodedUserId = btoa(userId);
-                        var activated = full['activated'];
-                        var activateButton = "";
-
-                        if (activated == 0) {
-                            activateButton +=
-                                '<a href="javascript:;" class="dropdown-item" title="Send activation link" ' +
-                                'onclick="ActivateUser(\'' + btoa('users') + '\', \'' +
-                                encodedUserId + '\', \'' + encodedUserId + '\', \'' + btoa(2) +
-                                '\')">' +
-                                '<i class="mdi mdi-shield-check me-2"></i><span>Send Activation Link</span></a>';
-                        }
-
-                        return (
-                            '<div class="d-inline-block text-nowrap">' +
-                            '<button class="btn btn-sm btn-icon btn-text-secondary rounded-pill dropdown-toggle hide-arrow" data-bs-toggle="dropdown">' +
-                            '<i class="mdi mdi-dots-vertical mdi-20px"></i></button>' +
-                            '<div class="dropdown-menu dropdown-menu-end m-0">' +
-                            '<a href="javascript:;" class="dropdown-item edit-user-btn" data-id="' +
-                            encodedUserId +
-                            '" data-bs-toggle="offcanvas" data-bs-target="#offcanvasAddUser">' +
-                            '<i class="mdi mdi-pencil-outline me-2"></i><span>Edit</span></a>' +
-                            '<a href="javascript:;" class="dropdown-item text-danger" onclick="updateStatus(\'' +
-                            encodedUserId + '\', 2, \'' + btoa('users') + '\', \'' + btoa(
-                                2) + '\')">' +
-                            '<i class="mdi mdi-delete-outline me-2"></i><span>Delete</span></a>' +
-                            activateButton +
-                            '</div>' +
-                            '</div>'
-                        );
-                    }
-                }
-            ],
-            buttons: [{
-                    extend: 'collection',
-                    className: 'btn btn-label-secondary dropdown-toggle me-3',
-                    text: '<i class="mdi mdi-export-variant me-1"></i> <span class="d-none d-sm-inline-block">Export</span>',
-                    buttons: [{
-                            extend: 'print',
-                            text: '<i class="mdi mdi-printer-outline me-1"></i>Print',
-                            className: 'dropdown-item',
-                            exportOptions: {
-                                columns: [0, 1, 2, 3, 4, 5, 6]
-                            }
-                        },
-                        {
-                            extend: 'csv',
-                            text: '<i class="mdi mdi-file-document-outline me-1"></i>Csv',
-                            className: 'dropdown-item',
-                            exportOptions: {
-                                columns: [0, 1, 2, 3, 4, 5, 6]
-                            }
-                        },
-                        {
-                            extend: 'excel',
-                            text: '<i class="mdi mdi-file-excel-outline me-1"></i>Excel',
-                            className: 'dropdown-item',
-                            exportOptions: {
-                                columns: [0, 1, 2, 3, 4, 5, 6]
-                            }
-                        },
-                        {
-                            extend: 'pdf',
-                            text: '<i class="mdi mdi-file-pdf-box me-1"></i>Pdf',
-                            className: 'dropdown-item',
-                            exportOptions: {
-                                columns: [0, 1, 2, 3, 4, 5, 6]
-                            }
-                        },
-                        {
-                            extend: 'copy',
-                            text: '<i class="mdi mdi-content-copy me-1"></i>Copy',
-                            className: 'dropdown-item',
-                            exportOptions: {
-                                columns: [0, 1, 2, 3, 4, 5, 6]
-                            }
-                        }
-                    ]
-                },
-                {
-                    text: '<i class="mdi mdi-plus me-0 me-sm-1"></i><span class="d-none d-sm-inline-block">ADD USER</span>',
-                    className: 'add-new btn btn-primary rounded-3 shadow-sm',
-                    attr: {
-                        'data-bs-toggle': 'offcanvas',
-                        'data-bs-target': '#offcanvasAddUser',
-                        'id': 'openAddUserPanel'
-                    }
-                }
-            ]
-        });
-
-        // Form Validation Setup
-        const formElement = document.getElementById('addNewUserForm');
-        const fvInstance = FormValidation.formValidation(formElement, {
-            fields: {
-                userFullname: {
-                    validators: {
-                        notEmpty: {
-                            message: 'The full name field is required'
-                        },
-                        regexp: {
-                            regexp: /^[a-zA-Z\s-]+$/,
-                            message: 'Only alphabets and spaces allowed'
-                        }
-                    }
-                },
-                userEmail: {
-                    validators: {
-                        notEmpty: {
-                            message: 'The email address is required'
-                        },
-                        emailAddress: {
-                            message: 'Please enter a valid email structure'
-                        }
-                    }
-                },
-                userContact: {
-                    validators: {
-                        notEmpty: {
-                            message: 'The contact configuration string is required'
-                        },
-                        stringLength: {
-                            min: 10,
-                            max: 10,
-                            message: 'Must contain exactly 10 digits'
-                        },
-                        digits: {
-                            message: 'Only integer digits allowed'
-                        }
-                    }
-                },
-                companyName: {
-                    validators: {
-                        notEmpty: {
-                            message: 'The company name is required'
-                        }
-                    }
-                },
-                country: {
-                    validators: {
-                        notEmpty: {
-                            message: 'Please select a country'
-                        }
-                    }
-                },
-                'user-role': {
-                    validators: {
-                        notEmpty: {
-                            message: 'Please select a user role'
-                        }
-                    }
-                },
-                'user-plan': {
-                    validators: {
-                        notEmpty: {
-                            message: 'Please select a subscription plan'
-                        }
-                    }
-                }
-            },
-            plugins: {
-                bootstrap5: new FormValidation.plugins.Bootstrap5({
-                    rowSelector: '.fv-row',
-                    eleInvalidClass: 'is-invalid',
-                    eleValidClass: 'is-valid'
-                }),
-                autoFocus: new FormValidation.plugins.AutoFocus()
-            }
-        });
-
-        function openPanel(title = "Add New User", btnText = "Save Entity") {
-            $('#offcanvasAddUserLabel').text(title);
-            $('#submitFormBtn').text(btnText);
-            const bsOffcanvas = new bootstrap.Offcanvas('#offcanvasAddUser');
-            bsOffcanvas.show();
-
-        }
-
-        function closePanel() {
-            const offcanvasEl = document.getElementById('offcanvasAddUser');
-            const bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasEl);
-            if (bsOffcanvas) {
-                bsOffcanvas.hide();
-            }
-
-            // Forcefully clear out lingering backdrops and scroll lock
-            $('.offcanvas-backdrop').remove();
-            $('body').removeClass('offcanvas-open').css({
-                'overflow': '',
-                'padding-right': ''
-            });
-
-            fvInstance.resetForm(true);
-            formElement.reset();
-            $('#userId').val('0');
-        }
-
-        // Handle bootstrap native hidden event as well to ensure backdrop clears up completely
-        const offcanvasElement = document.getElementById('offcanvasAddUser');
-        offcanvasElement.addEventListener('hidden.bs.offcanvas', function() {
-            $('.offcanvas-backdrop').remove();
-            $('body').removeClass('offcanvas-open').css({
-                'overflow': '',
-                'padding-right': ''
-            });
-            fvInstance.resetForm(true);
-            formElement.reset();
-            $('.select2').val([]).trigger('change');
-            $('#userId').val('0');
-        });
-
-        $('#openAddUserPanel').on('click', function() {
-            formElement.reset();
-            $('#userId').val('0');
-            $('.select2').val([]).trigger('change');
-            fvInstance.resetForm(true);
-            openPanel("Add New User", "Save Entity");
-        });
-
-        $('#submitFormBtn').on('click', function(e) {
-            e.preventDefault();
-
-            fvInstance.validate().then(function(status) {
-                if (status === 'Valid') {
-                    // Turant button disable aur spinner/loading text daal dein
-                    const $btn = $('#submitFormBtn');
-                    $btn.prop('disabled', true).addClass('opacity-50');
-                    const originalText = $btn.html();
-                    $btn.html(
-                        '<span class="spinner-border spinner-border-sm me-1"></span> Processing...'
-                        );
-
-                    $.ajax({
-                        url: "{{ route($roleName . '.users.store') }}",
-                        type: "POST",
-                        data: $(formElement).serialize(),
-                        success: function(response) {
-                            if (response.status == 1) {
-                                Swal.fire({
-                                    icon: 'success',
-                                    title: 'Success!',
-                                    text: response.message,
-                                    timer: 1500, // Timer thoda kam kar sakte hain (1.5 sec)
-                                    showConfirmButton: false
-                                });
-                                closePanel();
-
-                                // Table ko background mein reload hone dein
-                                setTimeout(function() {
-                                    table.ajax.reload(null, false);
-                                }, 100);
-                            } else {
-                                Swal.fire({
-                                    icon: 'error',
-                                    title: 'Oops...',
-                                    text: response.message
-                                });
-                            }
-                        },
-                        error: function(xhr) {
-                            // Aapka 422 validation error code yahan as it is rahega...
-                        },
-                        complete: function() {
-                            // Button ko wapas original state mein laayein
-                            $btn.prop('disabled', false).removeClass('opacity-50')
-                                .html(originalText);
-                        }
-                    });
-                }
-            });
-        });
-
-        $('#usersTable').on('click', '.edit-user-btn', function() {
-            const encodedId = $(this).data('id');
-            $.ajax({
-                url: "{{ route($roleName . '.users.details') }}",
-                type: "POST",
-                data: {
-                    id: encodedId
-                },
-                success: function(data) {
-                    fvInstance.resetForm(true);
-                    $('#userId').val(data.id);
-                    $('#userFullname').val(data.name);
-                    $('#userEmail').val(data.email);
-                    $('#userContact').val(data.contact_no);
-                    $('#companyName').val(data.company_name);
-                    $('#userRole').val(data.roles ? data.roles.toLowerCase() : '');
-                    $('#userPlan').val(data.plan ? data.plan.toLowerCase() : '');
-                    $('#country').val(data.country).trigger('change');
-
-                    openPanel("Modify User Profile", "Update Configuration");
-                },
-                error: function() {
-                    Swal.fire('Error', 'Could not load user data profile safely.', 'error');
-                }
-            });
-        });
-
-        $('#usersTable').on('click', '.btn-trash', function() {
-            const encodedId = $(this).data('id');
-            Swal.fire({
-                title: 'Are you sure?',
-                text: "Do you want to drop this user record into trash logs?",
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#7367f0',
-                cancelButtonColor: '#ea5455',
-                confirmButtonText: 'Yes, trash it!'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    executeTrashToggle(encodedId, 1);
-                }
-            });
-        });
-
-        $('#usersTable').on('click', '.btn-restore', function() {
-            const encodedId = $(this).data('id');
-            Swal.fire({
-                title: 'Restore User?',
-                text: "Do you want to restore this user back to active registries?",
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonColor: '#28c76f',
-                cancelButtonColor: '#ea5455',
-                confirmButtonText: 'Yes, restore it!'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    executeTrashToggle(encodedId, 0);
-                }
-            });
-        });
-
-        function executeTrashToggle(targetId, actionCode) {
-            $.ajax({
-                url: "{{ route($roleName . '.users.toggleTrash') }}",
-                type: "POST",
-                data: {
-                    id: targetId,
-                    action_type: actionCode
-                },
-                success: function(res) {
-                    if (res.status === 1) {
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Updated!',
-                            text: res.message,
-                            timer: 1500,
-                            showConfirmButton: false
+                    title: 'Resend activation', icon: 'mdi-email-fast-outline',
+                    when: function (d) { return d.activated === 0 && d.can_edit; },
+                    onClick: function (d) {
+                        AdminUI.confirm({
+                            title: 'Send activation link?',
+                            text: 'A fresh activation link will be emailed to ' + (d.email || 'this user') + '.',
+                            icon: 'info', confirmText: 'Send link'
+                        }).then(function (ok) {
+                            if (!ok) return;
+                            AdminUI.ajax(resendUrl, { id: d.id })
+                                .then(function (res) { AdminUI.toast(res.message, res.status === 1 ? 'success' : 'danger'); table.reload(false); })
+                                .catch(function (err) { AdminUI.toast(err.message, 'danger'); });
                         });
-                        table.ajax.reload(null, false);
-                    } else {
-                        Swal.fire('Error', res.message, 'error');
+                    }
+                },
+                {
+                    title: function(){ return inTrash ? 'Restore' : 'Trash'; },
+                    danger: true,
+                    icon: function(){ return inTrash ? 'mdi-restore' : 'mdi-trash-can-outline'; },
+                    when: function (d) { return inTrash ? d.can_edit : d.can_trash; },
+                    onClick: function (d) {
+                        var toTrash = !inTrash;
+                        AdminUI.confirm({
+                            title: toTrash ? 'Move to trash?' : 'Restore user?',
+                            text: toTrash
+                                ? (d.name || 'This user') + ' will be moved to trash and blocked from signing in.'
+                                : (d.name || 'This user') + ' will be restored to the active list.',
+                            confirmText: toTrash ? 'Yes, trash it' : 'Yes, restore',
+                            confirmColor: toTrash ? '#ea5455' : '#28c76f'
+                        }).then(function (ok) {
+                            if (!ok) return;
+                            AdminUI.ajax(trashUrl, { id: d.id, action_type: toTrash ? 1 : 0 })
+                                .then(function (res) {
+                                    AdminUI.toast(res.message, 'success');
+                                    table.reload(false);
+                                })
+                                .catch(function (err) { AdminUI.toast(err.message, 'danger'); });
+                        });
                     }
                 }
-            });
+            ])
         }
+    ];
+
+    var table = new AdminTable('#usersTable', {
+        url: dataUrl,
+        columns: columns,
+        initialSort: [{ column: 'id', dir: 'desc' }],
+        pageSize: 10,
+        searchInput: '#userSearch',
+        filters: { trash: 0, status: '', role: '' },
+        exportName: 'users',
+        onData: function (payload) { updateStats(payload.stats); }
     });
+
+    // ---------------------------------------------------- toolbar wiring
+    document.querySelectorAll('#statusChips .adt-chip[data-status]').forEach(function (chip) {
+        chip.addEventListener('click', function () {
+            document.querySelectorAll('#statusChips .adt-chip[data-status]').forEach(function (c) { c.classList.remove('active'); });
+            chip.classList.add('active');
+            table.setFilter('status', chip.getAttribute('data-status'));
+        });
+    });
+
+    document.getElementById('roleFilter').addEventListener('change', function (e) {
+        table.setFilter('role', e.target.value);
+    });
+
+    document.getElementById('trashToggle').addEventListener('click', function () {
+        inTrash = !inTrash;
+        table.setFilter('trash', inTrash ? 1 : 0);
+        document.getElementById('trashToggleLabel').textContent = inTrash ? 'Exit Trash' : 'View Trash';
+        AdminUI.toast(inTrash ? 'Showing trash — use the restore action to recover users.' : 'Showing active users.', 'info');
+    });
+
+    document.getElementById('exportCsv').addEventListener('click', function () { table.export('csv'); });
+    document.getElementById('exportJson').addEventListener('click', function () { table.export('json'); });
+
+    // ---------------------------------------------------- offcanvas form
+    var formEl = document.getElementById('userForm');
+    var offcanvasEl = document.getElementById('offcanvasUserForm');
+    var offcanvas = new bootstrap.Offcanvas(offcanvasEl);
+
+    function openCreate() {
+        formEl.reset();
+        document.getElementById('userId').value = '0';
+        document.getElementById('userFormTitle').textContent = 'Add New User';
+        document.getElementById('submitUserBtn').textContent = 'Save User';
+        clearErrors();
+        offcanvas.show();
+    }
+
+    function openEditor(id) {
+        clearErrors();
+        AdminUI.ajax(detailUrl, { id: id }).then(function (res) {
+            var u = res.data || {};
+            document.getElementById('userId').value = u.id;
+            document.getElementById('userFullname').value = u.name || '';
+            document.getElementById('userEmail').value = u.email || '';
+            document.getElementById('userContact').value = u.contact_no || '';
+            document.getElementById('companyName').value = u.company_name || '';
+            document.getElementById('country').value = u.country || '';
+            document.getElementById('userRole').value = u.role || '';
+            document.getElementById('userPlan').value = (u.plan || '').toLowerCase();
+            document.getElementById('userFormTitle').textContent = 'Edit User';
+            document.getElementById('submitUserBtn').textContent = 'Update User';
+            offcanvas.show();
+        }).catch(function (err) { AdminUI.toast(err.message, 'danger'); });
+    }
+
+    document.getElementById('addUserBtn').addEventListener('click', openCreate);
+
+    function clearErrors() {
+        formEl.querySelectorAll('.is-invalid').forEach(function (el) { el.classList.remove('is-invalid'); });
+        formEl.querySelectorAll('.invalid-feedback').forEach(function (el) { el.textContent = ''; });
+    }
+
+    function showErrors(errors) {
+        clearErrors();
+        Object.keys(errors || {}).forEach(function (key) {
+            var input = formEl.querySelector('[name="' + key + '"]');
+            var feedback = formEl.querySelector('[data-error-for="' + key + '"]');
+            if (input) input.classList.add('is-invalid');
+            if (feedback) feedback.textContent = (errors[key] || ['Invalid value'])[0];
+        });
+    }
+
+    formEl.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var btn = document.getElementById('submitUserBtn');
+        var original = btn.textContent;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+
+        var payload = {
+            user_id: document.getElementById('userId').value,
+            userFullname: document.getElementById('userFullname').value,
+            userEmail: document.getElementById('userEmail').value,
+            userContact: document.getElementById('userContact').value,
+            companyName: document.getElementById('companyName').value,
+            country: document.getElementById('country').value,
+            'user-role': document.getElementById('userRole').value,
+            'user-plan': document.getElementById('userPlan').value
+        };
+
+        AdminUI.ajax(storeUrl, payload)
+            .then(function (res) {
+                AdminUI.toast(res.message, 'success');
+                offcanvas.hide();
+                table.reload(false);
+            })
+            .catch(function (err) {
+                if (err.status === 422 && err.errors) showErrors(err.errors);
+                else AdminUI.toast(err.message, 'danger');
+            })
+            .finally(function () {
+                btn.disabled = false;
+                btn.textContent = original;
+            });
+    });
+});
 </script>
+@endpush
