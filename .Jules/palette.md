@@ -1,0 +1,3 @@
+## 2025-02-18 - Accessibility for DataTables Responsive Icon Buttons and Admin Navigation
+**Learning:** In DataTables and admin headers, action buttons and responsive controls often hide text labels on small screens (`d-none d-sm-inline-block`) or rely solely on icon fonts (e.g. `mdi-dots-vertical`). Without explicit `aria-label` and `aria-expanded` attributes on these controls, screen readers cannot identify the purpose of the action menu or toggle buttons.
+**Action:** Always add explicit `aria-label` and state attributes (`aria-expanded`) to icon-only buttons in DataTable action column renderers and header navigation toggles.
