@@ -479,10 +479,11 @@
                                 '<i class="mdi mdi-shield-check me-2"></i><span>Send Activation Link</span></a>';
                         }
 
+                        var fullName = full['full_name'] ? full['full_name'] : 'User';
                         return (
                             '<div class="d-inline-block text-nowrap">' +
-                            '<button class="btn btn-sm btn-icon btn-text-secondary rounded-pill dropdown-toggle hide-arrow" data-bs-toggle="dropdown">' +
-                            '<i class="mdi mdi-dots-vertical mdi-20px"></i></button>' +
+                            '<button class="btn btn-sm btn-icon btn-text-secondary rounded-pill dropdown-toggle hide-arrow" data-bs-toggle="dropdown" aria-label="Actions for ' + fullName + '" aria-expanded="false">' +
+                            '<i class="mdi mdi-dots-vertical mdi-20px" aria-hidden="true"></i></button>' +
                             '<div class="dropdown-menu dropdown-menu-end m-0">' +
                             '<a href="javascript:;" class="dropdown-item edit-user-btn" data-id="' +
                             encodedUserId +
@@ -502,7 +503,11 @@
             buttons: [{
                     extend: 'collection',
                     className: 'btn btn-label-secondary dropdown-toggle me-3',
-                    text: '<i class="mdi mdi-export-variant me-1"></i> <span class="d-none d-sm-inline-block">Export</span>',
+                    text: '<i class="mdi mdi-export-variant me-1" aria-hidden="true"></i> <span class="d-none d-sm-inline-block">Export</span>',
+                    attr: {
+                        'aria-label': 'Export data options',
+                        'aria-expanded': 'false'
+                    },
                     buttons: [{
                             extend: 'print',
                             text: '<i class="mdi mdi-printer-outline me-1"></i>Print',
@@ -546,12 +551,13 @@
                     ]
                 },
                 {
-                    text: '<i class="mdi mdi-plus me-0 me-sm-1"></i><span class="d-none d-sm-inline-block">ADD USER</span>',
+                    text: '<i class="mdi mdi-plus me-0 me-sm-1" aria-hidden="true"></i><span class="d-none d-sm-inline-block">ADD USER</span>',
                     className: 'add-new btn btn-primary rounded-3 shadow-sm',
                     attr: {
                         'data-bs-toggle': 'offcanvas',
                         'data-bs-target': '#offcanvasAddUser',
-                        'id': 'openAddUserPanel'
+                        'id': 'openAddUserPanel',
+                        'aria-label': 'Add New User'
                     }
                 }
             ]
