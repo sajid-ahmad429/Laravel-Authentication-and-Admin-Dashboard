@@ -2,67 +2,80 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Throwable;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Schema;
 
-/**
- * Status toggle endpoint for the user list.
- *
- * Hardened: single purpose (users only), whitelisted status values,
- * self/protected-account guard, and every write goes through Eloquent so
- * model events (cache invalidation + audit) always fire.
- */
 class CommonController extends Controller
 {
-    public function changeStatus(Request $request): JsonResponse
+    protected $session;
+    protected $db;
+
+    public function __construct()
     {
-        $validated = $request->validate([
-            'id'     => ['required', 'integer', 'min:1'],
-            'status' => ['required', 'integer', 'in:0,1'],
-        ]);
+        $this->session = Session::getFacadeRoot();
+        $this->db = DB::connection();
+    }
 
-        $user = User::find((int) $validated['id']);
+    public function chnage_status(Request $request) {
+        $id = base64_decode($request->input('id'));
+        $status = $request->input('status');
+        $tableName = base64_decode($request->input('name'));
 
-        if (! $user) {
-            return response()->json(['status' => 0, 'message' => 'User not found.'], 404);
+        // Whitelist allowed tables to prevent arbitrary table manipulation
+        $allowedTables = ['users', 'roles', 'permissions', 'activitymaster'];
+        if (!in_array($tableName, $allowedTables)) {
+            return response()->json(['success' => '0', 'message' => 'Unauthorized table operation.'], 403);
         }
 
-        if ($user->id === (int) session('id')) {
-            return response()->json(['status' => 0, 'message' => 'You cannot change your own status.'], 403);
+        $fieldNames = Schema::getColumnListing($tableName);
+
+        $result = false; // Initialize the result variable
+        $message = '';   // Initialize the message variable
+        $previousUpdateData = $this->db->table($tableName)->select($fieldNames)->where('id', $id)->first();
+
+        // Check if the result is not null and convert to an array
+        if ($previousUpdateData) {
+            $previousUpdateData = (array) $previousUpdateData; // Convert stdClass to array
+        } else {
+            $previousUpdateData = [];
         }
 
-        $actor = $request->attributes->get('sessionUser') ?? User::find(session('id'));
-
-        if (! $actor?->isProtected() && $user->roleRank() >= $actor?->roleRank()) {
-            return response()->json(['status' => 0, 'message' => 'You cannot modify this account.'], 403);
+        if ($tableName == 'users' && $status == 2) {
+            // Delete operation
+            $result = DB::table($tableName)->where('id', $id)->delete();
+            $additionalFields = ['deleted_by' => session('id'), 'deleted_at' => now(),'change_status' => $status,];
+            $data = array_merge(['id' => $id, 'status' => $status, 'trash' => 1], $additionalFields);
+            // $data = constructDataArray($tableName, $id, $status, $additionalFields);
+            track_activity($previousUpdateData, "", $data, $id, $tableName, 4);
+            $message = $result ? 'The record has been deleted successfully.' : 'Failed to delete the record.';
+        } else {
+            if ($status == 2) {
+                // Move to trash
+                $result = DB::table($tableName)->where('id', $id)->update(['status' => $status, 'trash' => 1]);
+                $additionalFields = ['deleted_by' => session('id'), 'deleted_at' => now()];
+                $data = array_merge(['id' => $id, 'status' => $status, 'trash' => 1], $additionalFields);
+                // $data = constructDataArray($tableName, $id, $status, $additionalFields);
+                track_activity($previousUpdateData, "", $data, $id, $tableName, 3);
+                $message = $result ? 'The record has been moved to trash.' : 'Failed to move the record to trash.';
+            } else {
+                // Update status
+                $result = DB::table($tableName)->where('id', $id)->update(['status' => $status]);
+                $additionalFields = ['status_change_by' => session('id'), 'deleted_at' => now()];
+                $data = array_merge(['id' => $id, 'status' => $status], $additionalFields);
+                // $data = constructDataArray($tableName, $id, $status, $additionalFields);
+                track_activity($previousUpdateData, "", $data, $id, $tableName, $status == 0 ? 3 : 2);
+                $message = $result ? 'The record has been updated successfully.' : 'Failed to update the record.';
+            }
         }
 
-        try {
-            $previous = (int) $user->status;
-
-            $user->forceFill(['status' => (int) $validated['status']])->save();
-
-            track_activity(
-                ['status' => $previous],
-                $user,
-                ['status' => (int) $validated['status']],
-                $user->id,
-                'users',
-                2
-            );
-        } catch (Throwable $e) {
-            report($e);
-
-            return response()->json(['status' => 0, 'message' => 'Status update failed.'], 500);
-        }
-
+        // Return JSON response with success indicator and message
         return response()->json([
-            'status'  => 1,
-            'message' => (int) $validated['status'] === 1
-                ? 'User activated successfully.'
-                : 'User deactivated successfully.',
+            'success' => $result ? '1' : '0',
+            'message' => $message
         ]);
     }
+
+
 }

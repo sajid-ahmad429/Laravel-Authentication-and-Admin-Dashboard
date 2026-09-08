@@ -31,7 +31,7 @@ class SendActivationMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: (string) config('auth.activate_email_subject', 'Activate Your Account'),
+            subject: 'Send Activation Mail',
         );
     }
 

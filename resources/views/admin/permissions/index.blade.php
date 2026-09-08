@@ -1,110 +1,221 @@
-@section('title', 'Permissions')
 @include('Admin.templates.header')
 
+@php
+    $role = session('role');
+    $roleName = !empty($role) && in_array($role, ['superadmin', 'admin']) ? $role : 'admin';
+@endphp
+
+<!-- SweetAlert2 CSS -->
+<style>
+    .dataTables_wrapper .dataTables_length select,
+    .dataTables_wrapper .dataTables_filter input {
+        border: 1px solid #dbdade !important;
+        border-radius: 0.5rem !important;
+        padding: 0.45rem 0.9rem !important;
+        background-color: #fff !important;
+        color: #6f6b7d !important;
+        font-size: 0.9375rem;
+    }
+
+    .dataTables_wrapper .dataTables_filter input:focus,
+    .dataTables_wrapper .dataTables_length select:focus {
+        border-color: #7367f0 !important;
+        box-shadow: 0 0.125rem 0.25rem rgba(115, 103, 240, 0.15) !important;
+        outline: none;
+    }
+
+    table.dataTable.table-striped>tbody>tr:nth-of-type(odd) {
+        background-color: #fbfbfd !important;
+    }
+
+    table.dataTable tbody tr:hover {
+        background-color: #f6f5fa !important;
+    }
+
+    .dt-buttons .btn {
+        border-radius: 0.375rem;
+        font-weight: 500;
+        padding: 0.438rem 0.875rem;
+        transition: all 0.2s ease-in-out;
+    }
+
+    .dt-buttons .btn:hover {
+        transform: translateY(-1px);
+    }
+
+    /* Fallback protection to clear backdrop bugs */
+    body:not(.offcanvas-open) .offcanvas-backdrop {
+        display: none !important;
+    }
+
+    .dataTables_filter {
+        position: relative;
+    }
+
+    .dataTables_filter input {
+        padding-left: 35px !important;
+    }
+
+    .dataTables_filter label {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .dataTables_filter label::before {
+        content: "\F0349";
+        font-family: "Material Design Icons";
+        position: absolute;
+        left: 7px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #a8b1bc;
+        font-size: 18px;
+        pointer-events: none;
+    }
+</style>
 
 <div class="content-wrapper">
     <div class="container-xxl flex-grow-1 container-p-y">
 
-        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-            <div>
-                <h4 class="fw-bold mb-1">Permissions</h4>
-                <p class="text-muted mb-0">Granular capabilities that can be attached to any role.</p>
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header border-bottom bg-transparent py-3 d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                    <h5 class="card-title fw-bold mb-1 text-dark">Permissions Management</h5>
+                    <p class="text-muted mb-0 small">Create and manage access rights across system components.</p>
+                </div>
             </div>
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-0">
-                    <li class="breadcrumb-item"><a href="{{ route('panel.dashboard') }}">Home</a></li>
-                    <li class="breadcrumb-item active">Permissions</li>
-                </ol>
-            </nav>
+
+            @if(session('success'))
+                <div class="alert alert-success alert-dismissible mx-4 mt-3" role="alert">
+                    {{ session('success') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+
+            <div class="card-body px-4 py-4">
+                <div class="card-datatable table-responsive">
+                    <table class="datatables table table-hover align-middle border-top w-full" id="permissionsTable" style="width: 100%;">
+                        <thead class="bg-slate-50/75 backdrop-blur-md border-y border-slate-200/80 sticky top-0 z-10">
+                            <tr>
+                                <th>ID</th>
+                                <th>Permission Name</th>
+                                <th>Guard</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                    </table>
+                </div>
+            </div>
         </div>
 
-        <div class="card border-0 shadow-sm">
-            <div class="adt-toolbar" id="permToolbar">
-                <div class="adt-search">
-                    <i class="mdi mdi-magnify adt-search-icon"></i>
-                    <input type="search" id="permSearch" placeholder="Search permissions…" autocomplete="off"
-                        aria-label="Search permissions">
-                </div>
-                <div class="adt-actions">
-                    <button class="btn btn-primary d-flex align-items-center gap-1" type="button" id="addPermBtn">
-                        <i class="mdi mdi-plus"></i> <span>New Permission</span>
-                    </button>
-                </div>
+        <!-- Offcanvas drawer to add permission -->
+        <div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasAddPermission" aria-labelledby="offcanvasAddPermissionLabel">
+            <div class="offcanvas-header border-bottom bg-light">
+                <h5 id="offcanvasAddPermissionLabel" class="offcanvas-title fw-bold text-dark">Add New Permission</h5>
+                <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
             </div>
-            <div class="px-2 pb-2" id="permissionsTable"></div>
+            <div class="offcanvas-body mx-0 flex-grow-0 h-100 p-4">
+                <form action="{{ route($roleName . '.permissions.store') }}" method="POST">
+                    @csrf
+                    <div class="form-floating form-floating-outline mb-4">
+                        <input type="text" class="form-control" id="permNameInput" name="name" placeholder="Permission Name (e.g. edit users)" required />
+                        <label for="permNameInput">Permission Name <span class="text-danger">*</span></label>
+                    </div>
+
+                    <div class="d-flex gap-3 mt-4">
+                        <button type="submit" class="btn btn-primary flex-fill shadow-sm">Save Permission</button>
+                        <button type="reset" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button>
+                    </div>
+                </form>
+            </div>
         </div>
+
     </div>
     @include('Admin.templates.footer')
 </div>
 
-{{-- ======================= Create permission modal ======================= --}}
-<div class="modal fade" id="permModal" tabindex="-1" aria-labelledby="permModalTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <form id="permForm" action="{{ route('panel.permissions.store') }}" method="POST">
-                @csrf
-                <div class="modal-header border-0 pb-0">
-                    <h5 class="modal-title fw-bold" id="permModalTitle">New Permission</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-2">
-                        <label class="form-label" for="permName">Permission Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="permName" name="name"
-                            placeholder="e.g. manage invoices" pattern="[a-z0-9\-\s]+" maxlength="100" required>
-                        <div class="form-text">Lowercase words, e.g. <code>manage invoices</code>, <code>publish articles</code>.</div>
-                    </div>
-                </div>
-                <div class="modal-footer border-0">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Create Permission</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-@push('scripts')
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    var deleteUrl = '{{ route('panel.permissions.destroy') }}';
+    $(document).ready(function() {
+        $.ajaxSetup({
+            headers: {
+                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+            }
+        });
 
-    var table = new AdminTable('#permissionsTable', {
-        url: '{{ route('panel.permissions.data') }}',
-        initialSort: [{ column: 'id', dir: 'desc' }],
-        searchInput: '#permSearch',
-        exportName: 'permissions',
-        columns: [
-            { title: 'Permission', field: 'name', minWidth: 220, formatter: function (cell) {
-                var v = cell.getValue();
-                return '<span class="fw-semibold">' + AdminUI.escape(v) + '</span>';
-            } },
-            { title: 'Guard', field: 'guard_name', width: 130, formatter: AdminUI.fmt.simpleBadge('dark', 'mdi-shield-lock-outline') },
-            { title: 'Created', field: 'created', width: 140, formatter: AdminUI.fmt.date },
-            { title: 'Actions', field: 'actions', width: 90, hozAlign: 'center', headerSort: false,
-              formatter: AdminUI.fmt.actions([
-                  {
-                      title: 'Delete permission', icon: 'mdi-trash-can-outline', danger: true,
-                      onClick: function (d) {
-                          AdminUI.confirm({
-                              title: 'Delete “' + d.name + '”?',
-                              text: 'Permissions in use by roles cannot be deleted.',
-                              confirmText: 'Delete', confirmColor: '#ea5455'
-                          }).then(function (ok) {
-                              if (!ok) return;
-                              AdminUI.ajax(deleteUrl, { id: d.id })
-                                  .then(function (res) { AdminUI.toast(res.message, 'success'); table.reload(false); })
-                                  .catch(function (err) { AdminUI.toast(err.message, 'danger'); });
-                          });
-                      }
-                  }
-              ]) }
-        ]
+        $('#permissionsTable').DataTable({
+            processing: true,
+            serverSide: true,
+            ajax: {
+                url: "{{ route($roleName . '.permissions.data') }}",
+                type: 'POST'
+            },
+            columns: [
+                { data: 'id', name: 'id' },
+                { data: 'name', name: 'name' },
+                { data: 'guard_name', name: 'guard_name' },
+                { data: 'actions', name: 'actions', orderable: false, searchable: false }
+            ],
+            dom: '<"row align-items-center mx-2"' +
+                '<"col-md-2"l>' +
+                '<"col-md-10"<"dt-action-buttons text-xl-end text-lg-start text-md-end text-start d-flex align-items-center justify-content-end flex-md-row flex-column mb-3 mb-md-0 gap-3"fB>>' +
+                '>t' +
+                '<"row mx-2"' +
+                '<"col-sm-12 col-md-6"i>' +
+                '<"col-sm-12 col-md-6"p>' +
+                '>',
+            language: {
+                sLengthMenu: 'Show _MENU_',
+                search: '',
+                searchPlaceholder: 'Search..'
+            },
+            buttons: [
+                {
+                    extend: 'collection',
+                    className: 'btn btn-label-secondary dropdown-toggle me-3',
+                    text: '<i class="mdi mdi-export-variant me-1"></i> <span class="d-none d-sm-inline-block">Export</span>',
+                    buttons: [
+                        {
+                            extend: 'print',
+                            text: '<i class="mdi mdi-printer-outline me-1"></i>Print',
+                            className: 'dropdown-item',
+                            exportOptions: { columns: [0, 1, 2] }
+                        },
+                        {
+                            extend: 'csv',
+                            text: '<i class="mdi mdi-file-document-outline me-1"></i>Csv',
+                            className: 'dropdown-item',
+                            exportOptions: { columns: [0, 1, 2] }
+                        },
+                        {
+                            extend: 'excel',
+                            text: '<i class="mdi mdi-file-excel-outline me-1"></i>Excel',
+                            className: 'dropdown-item',
+                            exportOptions: { columns: [0, 1, 2] }
+                        },
+                        {
+                            extend: 'pdf',
+                            text: '<i class="mdi mdi-file-pdf-box me-1"></i>Pdf',
+                            className: 'dropdown-item',
+                            exportOptions: { columns: [0, 1, 2] }
+                        },
+                        {
+                            extend: 'copy',
+                            text: '<i class="mdi mdi-content-copy me-1"></i>Copy',
+                            className: 'dropdown-item',
+                            exportOptions: { columns: [0, 1, 2] }
+                        }
+                    ]
+                },
+                {
+                    text: '<i class="mdi mdi-plus me-0 me-sm-1"></i><span class="d-none d-sm-inline-block">ADD PERMISSION</span>',
+                    className: 'add-new btn btn-primary rounded-3 shadow-sm',
+                    attr: {
+                        'data-bs-toggle': 'offcanvas',
+                        'data-bs-target': '#offcanvasAddPermission'
+                    }
+                }
+            ]
+        });
     });
-
-    var modalEl = document.getElementById('permModal');
-    var modal = new bootstrap.Modal(modalEl);
-    document.getElementById('addPermBtn').addEventListener('click', function () { modal.show(); });
-});
 </script>
-@endpush

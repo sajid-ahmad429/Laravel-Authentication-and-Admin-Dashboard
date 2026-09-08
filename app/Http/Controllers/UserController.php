@@ -2,417 +2,351 @@
 
 namespace App\Http\Controllers;
 
-use App\Libraries\AuthLibrary;
-use App\Models\User;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Models\User;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
-use Throwable;
 
 class UserController extends Controller
 {
-    /** Whitelisted sortable columns (never pass client input to orderBy). */
-    protected const SORTABLE = [
-        'id'         => 'id',
-        'name'       => 'name',
-        'email'      => 'email',
-        'role'       => 'plan', // role is relational; falls back to a stable column
-        'plan'       => 'plan',
-        'country'    => 'country',
-        'status'     => 'status',
-        'created_at' => 'created_at',
-    ];
+    protected User $users;
 
-    public function __construct(protected AuthLibrary $authLibrary)
+    public function __construct(User $users)
     {
+        $this->users = $users;
+        date_default_timezone_set('Asia/Kolkata');
     }
 
-    /* ==================================================================
-     |  Page
-     * ================================================================== */
-
-    public function index(Request $request)
+    public function index()
     {
-        $stats = User::cachedStats();
-
-        return view('masters.users.list', [
-            'activeMenu' => 'users',
-            'stats'      => $stats,
-            'roles'      => (array) config('auth.roles'),
-            'plans'      => (array) config('auth.protected_plans'),
-        ]);
-    }
-
-    /* ==================================================================
-     |  Server-side data (Tabulator remote pagination contract)
-     * ================================================================== */
-
-    /**
-     * Contract (all params validated):
-     *   page      int    1-based page number
-     *   size      int    page size (1..100)
-     *   sort_by   string whitelisted column
-     *   sort_dir  asc|desc
-     *   search    string global search term (max 100 chars)
-     *   status    ''|0|1 active filter
-     *   trash     0|1    recycle bin filter
-     *   role      string spatie role filter
-     *
-     * Response:
-     *   { last_page, total, current_page, stats, data[] }
-     */
-    public function getTableData(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'page'     => ['sometimes', 'integer', 'min:1', 'max:100000'],
-            'size'     => ['sometimes', 'integer', 'min:1', 'max:100'],
-            'sort_by'  => ['sometimes', 'string', Rule::in(array_keys(self::SORTABLE))],
-            'sort_dir' => ['sometimes', 'in:asc,desc'],
-            'search'   => ['sometimes', 'nullable', 'string', 'max:100'],
-            'status'   => ['sometimes', 'nullable', 'in:0,1'],
-            'trash'    => ['sometimes', 'in:0,1'],
-            'role'     => ['sometimes', 'nullable', 'string', 'max:50'],
-        ]);
-
-        $page    = (int) ($validated['page'] ?? 1);
-        $size    = (int) ($validated['size'] ?? 10);
-        $sortBy  = self::SORTABLE[$validated['sort_by'] ?? 'id'];
-        $sortDir = $validated['sort_dir'] ?? 'desc';
-        $search  = trim((string) ($validated['search'] ?? ''));
-        $status  = $validated['status'] ?? null;
-        $trash   = (int) ($validated['trash'] ?? 0);
-        $role    = strtolower(trim((string) ($validated['role'] ?? '')));
-
-        $query = User::query()
-            ->with('roles:id,name')
-            ->select(['id', 'name', 'email', 'avatar', 'contact_no', 'company_name', 'country', 'plan', 'status', 'trash', 'activated', 'created_at'])
-            ->where('trash', $trash);
-
-        if ($status !== null && $status !== '') {
-            $query->where('status', (int) $status);
+        if (!session()->has('isLoggedIn')) {
+            return redirect()->to('sysCtrlLogin');
         }
 
-        if ($role !== '') {
-            $query->whereHas('roles', fn ($q) => $q->where('name', $role));
-        }
+        $data['activeMenu'] = "users";
+        $data['assetsJs'] = ['app-user-list'];
 
-        // Global search (prefix on identity fields + bounded wildcard).
-        if ($search !== '') {
-            $like = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
+        $data['active'] = Cache::remember('count_active', 120, function () {
+            return DB::table('users')->where('status', 1)->where('trash', 0)->count();
+        });
 
-            $query->where(function ($q) use ($like) {
-                $q->where('name', 'LIKE', $like)
-                  ->orWhere('email', 'LIKE', $like)
-                  ->orWhere('contact_no', 'LIKE', $like)
-                  ->orWhere('company_name', 'LIKE', $like)
-                  ->orWhere('country', 'LIKE', $like);
-            });
-        }
+        $data['inactive'] = Cache::remember('count_inactive', 120, function () {
+            return DB::table('users')->where('status', 0)->where('trash', 0)->count();
+        });
 
-        $total = (clone $query)->count();
+        $data['totalUsers'] = Cache::remember('count_total', 120, function () {
+            return DB::table('users')->where('trash', 0)->count();
+        });
 
-        $users = $query
-            ->orderBy($sortBy, $sortDir)
-            ->orderBy('id', 'desc')
-            ->forPage($page, $size)
-            ->get();
-
-        return response()->json([
-            'last_page'    => (int) max(1, ceil($total / $size)),
-            'total'        => $total,
-            'current_page' => $page,
-            'stats'        => User::cachedStats(),
-            'data'         => $users->map(fn (User $u) => $this->transform($u))->all(),
-        ]);
+        return view('masters.users.list', $data);
     }
-
-    /**
-     * Clean row payload — the frontend renders all markup, so the server
-     * never emits HTML (removes a whole class of XSS).
-     */
-    protected function transform(User $u): array
-    {
-        return [
-            'id'           => $u->id,
-            'name'         => (string) $u->name,
-            'email'        => (string) $u->email,
-            'avatar'       => $u->avatar ? asset($u->avatar) : null,
-            'initials'     => $this->initials($u->name),
-            'role'         => $u->roleName() ?: (string) optional($u->roles->first())->name,
-            'plan'         => (string) ($u->plan ?? ''),
-            'country'      => (string) ($u->country ?? ''),
-            'company_name' => (string) ($u->company_name ?? ''),
-            'contact_no'   => (string) ($u->contact_no ?? ''),
-            'status'       => (int) $u->status,
-            'activated'    => (int) $u->activated,
-            'created_at'   => optional($u->created_at)->format('d M Y'),
-            'can_edit'     => $this->canManageTarget($u),
-            'can_trash'    => $this->canManageTarget($u) && $u->id !== (int) session('id'),
-        ];
-    }
-
-    protected function initials(string $name): string
-    {
-        $parts = preg_split('/\s+/', trim($name)) ?: [];
-
-        return strtoupper(substr($parts[0] ?? 'U', 0, 1).substr($parts[1] ?? '', 0, 1));
-    }
-
-    /* ==================================================================
-     |  Create / Update
-     * ================================================================== */
 
     public function store(Request $request): JsonResponse
     {
-        $actor = $request->attributes->get('sessionUser') ?? User::find(session('id'));
-        $actorRank = $actor?->roleRank() ?? 0;
-        $isSuperadmin = $actor?->isProtected() ?? false;
+        $userId = $request->input('user_id');
+        $isUpdating = $request->has('user_id') && !empty($userId) && $userId != 0;
 
-        // Roles the actor may assign: never above own rank, never protected.
-        $assignable = collect((array) config('auth.assignable_roles'))
-            ->filter(fn ($r) => $isSuperadmin
-                || (int) config("auth.role_rank.$r", PHP_INT_MAX) <= $actorRank)
-            ->values()
-            ->all();
+        $rules = [
+            'userFullname' => ['required', 'string', 'max:255', 'regex:/^[a-zA-Z\s\-]+$/'],
+            'userEmail'    => ['required', 'email', $isUpdating ? 'unique:users,email,' . $userId : 'unique:users,email'],
+            'userContact'  => ['required', 'string', 'max:10', $isUpdating ? 'unique:users,contact_no,' . $userId : 'unique:users,contact_no'],
+            'companyName'  => ['nullable', 'string', 'max:150'],
+            'country'      => ['nullable', 'string', 'max:100'],
+            'user-role'    => ['nullable', 'string', 'max:50'],
+            'user-plan'    => ['nullable', 'string', 'max:50'],
+        ];
 
-        $validated = $request->validate([
-            'user_id'       => ['sometimes', 'nullable', 'integer', 'min:0'],
-            'userFullname'  => ['required', 'string', 'min:2', 'max:120', 'regex:/^[\pL\pN\s.\-\'&]+$/u'],
-            'userEmail'     => ['required', 'email:rfc', 'max:255'],
-            'userContact'   => ['nullable', 'string', 'max:15', 'regex:/^[0-9+\-\s()]+$/'],
-            'companyName'   => ['nullable', 'string', 'max:150'],
-            'country'       => ['nullable', 'string', 'max:100'],
-            'user-role'     => ['nullable', 'string', Rule::in($assignable)],
-            'user-plan'     => ['nullable', 'string', Rule::in((array) config('auth.protected_plans'))],
-        ]);
+        $validator = Validator::make($request->all(), $rules);
 
-        $userId    = (int) ($validated['user_id'] ?? 0);
-        $isUpdating = $userId > 0;
-
-        // Uniqueness check (ignores the target row when updating).
-        if (User::where('email', $validated['userEmail'])->where('id', '!=', $userId)->exists()) {
+        if ($validator->fails()) {
             return response()->json([
                 'status'  => 0,
-                'message' => 'Validation failed.',
-                'errors'  => ['userEmail' => ['This email address is already in use.']],
+                'message' => 'Validation error occurred.',
+                'errors'  => $validator->errors()
             ], 422);
         }
 
-        if ($isUpdating) {
-            $target = User::find($userId);
+        DB::beginTransaction();
+        try {
+            $roleInput = $request->input('user-role');
 
-            if (! $target) {
-                return response()->json(['status' => 0, 'message' => 'User not found.'], 404);
-            }
+            $data = [
+                'name'         => $request->input('userFullname'),
+                'email'        => $request->input('userEmail'),
+                'contact_no'   => $request->input('userContact'),
+                'company_name' => $request->input('companyName'),
+                'country'      => $request->input('country'),
+                'plan'         => $request->input('user-plan'),
+            ];
 
-            if (! $this->canManageTarget($target)) {
-                return response()->json(['status' => 0, 'message' => 'You cannot modify this account.'], 403);
-            }
+            if ($isUpdating) {
+                $user = User::find($userId);
+                if (!$user) {
+                    DB::rollBack();
+                    return response()->json(['status' => 0, 'message' => 'Target user footprint not found.'], 442);
+                }
 
-            DB::beginTransaction();
-            try {
-                $target->fill([
-                    'name'         => $validated['userFullname'],
-                    'email'        => $validated['userEmail'],
-                    'contact_no'   => $validated['userContact'] ?? null,
-                    'company_name' => $validated['companyName'] ?? null,
-                    'country'      => $validated['country'] ?? null,
-                    'plan'         => $validated['user-plan'] ?? null,
-                ])->save();
+                $user->update($data);
 
-                if (! empty($validated['user-role'])) {
-                    $target->syncRoles([$validated['user-role']]);
+                if (!empty($roleInput)) {
+                    $user->syncRoles([strtolower($roleInput)]);
                 }
 
                 DB::commit();
-            } catch (Throwable $e) {
-                DB::rollBack();
-                Log::error('User update failed: '.$e->getMessage());
+                $this->clearUserCache($userId);
 
-                return response()->json(['status' => 0, 'message' => 'Could not update the user. Please try again.'], 500);
+                return response()->json(['status' => 1, 'message' => 'Record Details Updated Successfully']);
+            } else {
+                $data['password'] = bcrypt('Smart@#123');
+                $newUser = User::create($data);
+
+                if (!empty($roleInput)) {
+                    $newUser->syncRoles([strtolower($roleInput)]);
+                }
+
+                DB::commit();
+                $this->clearUserCache();
+
+                return response()->json(['status' => 1, 'message' => 'Record Details Added Successfully']);
             }
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Error tracking inside creation/update pipeline: ' . $e->getMessage());
+            return response()->json(['status' => 0, 'message' => 'Critical database layer transaction exception.'], 500);
+        }
+    }
 
-            return response()->json(['status' => 1, 'message' => 'User updated successfully.']);
+    public function getTableData(Request $request): JsonResponse
+    {
+        if (!$request->ajax()) {
+            return response()->json(['status' => 0, 'message' => 'Invalid Request'], 400);
         }
 
-        // ------------------------------------------------------------------
-        // Create: no hardcoded passwords. The account starts unactivated and
-        // receives an activation email (self-queues) to set up securely.
-        // ------------------------------------------------------------------
-        DB::beginTransaction();
-        try {
-            $user = new User();
-            $user->name        = $validated['userFullname'];
-            $user->email       = $validated['userEmail'];
-            $user->password    = Str::password(24, symbols: true); // placeholder, unusable until activation flow
-            $user->contact_no  = $validated['userContact'] ?? null;
-            $user->company_name = $validated['companyName'] ?? null;
-            $user->country     = $validated['country'] ?? null;
-            $user->plan        = $validated['user-plan'] ?? null;
-            $user->status      = 1;
-            $user->trash       = 0;
-            $user->activated   = 0;
-            $user->save();
+        $validated = $request->validate([
+            'draw'           => ['required', 'integer'],
+            'start'          => ['required', 'integer', 'min:0'],
+            'length'         => ['required', 'integer', 'min:1', 'max:100'],
+            'search.value'   => ['nullable', 'string', 'max:100'],
+            'order'          => ['nullable', 'array'],
+            'order.*.column' => ['required', 'integer'],
+            'order.*.dir'    => ['required', 'in:asc,desc'],
+        ]);
 
-            $user->assignRole($validated['user-role'] ?? config('auth.default_role'));
+        $columnMap = [
+            0 => 'id',
+            1 => 'name',
+            2 => 'email',
+            3 => 'roles',
+            4 => 'plan',
+            5 => 'country',
+            6 => 'status'
+        ];
 
-            $token = $this->authLibrary->issueToken($user, 'activate_token');
-            $this->authLibrary->sendActivationEmail($user, $token);
+        // Base query setup (Searchable columns select me daal diye taaki crash na ho)
+        $query = User::query()->select([
+            'id',
+            'name',
+            'email',
+            'roles',
+            'plan',
+            'country',
+            'status',
+            'trash',
+            'contact_no',
+            'company_name'
+        ]);
 
-            DB::commit();
-        } catch (Throwable $e) {
-            DB::rollBack();
-            Log::error('User creation failed: '.$e->getMessage());
+        // 1. Pehle tab/trash filter apply karein
+        $trashFilter = $request->has('trash_filter') ? intval($request->input('trash_filter')) : 0;
+        $query->where('trash', $trashFilter);
 
-            return response()->json(['status' => 0, 'message' => 'Could not create the user. Please try again.'], 500);
+        // 2. Custom status filter apply karein
+        if ($request->has('status_filter') && $request->input('status_filter') !== '') {
+            $query->where('status', $request->input('status_filter'));
+        }
+
+        // High-volume performance optimization: Cache total records count for 2 minutes to prevent heavy COUNT(*) queries
+        $recordsTotal = Cache::remember("dt_total_users_trash_{$trashFilter}_status_" . ($request->input('status_filter', 'all')), 120, function () use ($query) {
+            return (clone $query)->count();
+        });
+
+        // 3. Ab global search keyword filter apply karein
+        if (!empty($validated['search']['value'])) {
+            $search = $validated['search']['value'];
+            $query->where(function ($sub) use ($search) {
+                $sub->where('name', 'LIKE', "{$search}%")
+                    ->orWhere('email', 'LIKE', "{$search}%")
+                    ->orWhere('contact_no', 'LIKE', "{$search}%")
+                    ->orWhere('company_name', 'LIKE', "{$search}%");
+            });
+        }
+
+        // ⭐ STEP 2: Yeh search filter lagne ke baad ka total hai (e.g. 15)
+        $recordsFiltered = $query->count();
+
+        // Dashboard counters calculation
+        $aggregateData = DB::table('users')
+            ->selectRaw("
+            COUNT(CASE WHEN status = 1 AND trash = 0 THEN 1 END) as active_count,
+            COUNT(CASE WHEN status = 0 AND trash = 0 THEN 1 END) as inactive_count,
+            COUNT(CASE WHEN trash = 1 THEN 1 END) as trashed_count
+        ")->first();
+
+        // Sorting Logic
+        $sortColumnIndex = isset($validated['order'][0]['column']) ? $validated['order'][0]['column'] : 0;
+        $sortDirection = isset($validated['order'][0]['dir']) ? $validated['order'][0]['dir'] : 'desc';
+        $sortColumn = $columnMap[$sortColumnIndex] ?? 'id';
+        $query->orderBy($sortColumn, $sortDirection);
+
+        // Pagination Limit Apply
+        $users = $query->skip($validated['start'])->take($validated['length'])->get();
+
+        $data = [];
+        foreach ($users as $user) {
+            $encodedId = base64_encode($user->id);
+
+            if ($user->trash == 1) {
+                $actionButtons = '<button class="btn btn-sm btn-success btn-restore" data-id="' . $encodedId . '"> <i class="mdi mdi-restore me-1"></i> Restore </button>';
+            } else {
+                $actionButtons = '
+                <div class="dropdown">
+                    <button type="button" class="btn p-0 dropdown-toggle hide-arrow" data-bs-toggle="dropdown">
+                        <i class="mdi mdi-dots-vertical"></i>
+                    </button>
+                    <div class="dropdown-menu">
+                        <a class="dropdown-item edit-user-btn" href="javascript:void(0);" data-id="' . $encodedId . '"><i class="mdi mdi-pencil-outline me-1"></i> Edit</a>
+                        <a class="dropdown-item btn-trash text-danger" href="javascript:void(0);" data-id="' . $encodedId . '"><i class="mdi mdi-trash-can-outline me-1"></i> Trash</a>
+                    </div>
+                </div>';
+            }
+
+            $statusBadge = $user->status == 1
+                ? '<span class="badge bg-label-success">ACTIVE</span>'
+                : '<span class="badge bg-label-secondary">INACTIVE</span>';
+
+            $data[] = [
+                'id'           => $user->id,
+                'full_name'    => ucwords(e($user->name)),
+                'email'        => e($user->email),
+                'role'         => '<span class="text-warning"><i class="mdi mdi-cog-outline me-1"></i>' . (ucwords(e($user->roles)) ?: '-') . '</span>',
+                'current_plan' => ucwords(e($user->plan)) ?: '-',
+                'country'      => e($user->country) ?: '-',
+                'status'       => $statusBadge,
+                'actions'      => '<div class="text-center">' . $actionButtons . '</div>'
+            ];
         }
 
         return response()->json([
-            'status'  => 1,
-            'message' => 'User created. An activation email has been sent to their inbox.',
+            'draw'                => intval($validated['draw']),
+            'recordsTotal'        => $recordsTotal,        // Dynamic Total Count 
+            'recordsFiltered'     => $recordsFiltered,     // Filtered Count
+            'totalActiveRecods'   => $aggregateData->active_count ?? 0,
+            'totalInActiveRecods' => $aggregateData->inactive_count ?? 0,
+            'totalTrashedRecods'  => $aggregateData->trashed_count ?? 0,
+            'data'                => $data
         ]);
     }
 
-    /* ==================================================================
-     |  Details (edit modal)
-     * ================================================================== */
 
     public function getUserDetails(Request $request): JsonResponse
     {
-        $validated = $request->validate(['id' => ['required', 'integer', 'min:1']]);
+        if ($request->has('id') && !empty($request->input('id'))) {
+            try {
+                $id = base64_decode($request->input('id'), true);
+                if (!$id) {
+                    throw new \InvalidArgumentException("Invalid payload encryption signature.");
+                }
 
-        $user = User::with('roles:id,name')->find((int) $validated['id']);
+                $cacheKey = "user_details_{$id}";
+                $usersData = Cache::remember($cacheKey, 300, function () use ($id) {
+                    return User::where('id', $id)->first();
+                });
 
-        if (! $user) {
-            return response()->json(['status' => 0, 'message' => 'User not found.'], 404);
+                if ($usersData) {
+                    $responseData = $usersData->toArray();
+                    unset($responseData['password'], $responseData['remember_token']);
+                    $responseData['status'] = 1;
+                    $responseData['acftkn'] = ['acftkname' => csrf_token(), 'acftknhs'  => csrf_token()];
+                    return response()->json($responseData);
+                }
+                return response()->json(['status' => 2, 'message' => "Requested record not found."], 442);
+            } catch (\Exception $e) {
+                return response()->json(['status' => 0, 'message' => "Decryption failure."], 400);
+            }
         }
-
-        if (! $this->canManageTarget($user)) {
-            return response()->json(['status' => 0, 'message' => 'You cannot view this account.'], 403);
-        }
-
-        // Only return the fields the edit form needs — nothing more.
-        return response()->json([
-            'status' => 1,
-            'data'   => [
-                'id'           => $user->id,
-                'name'         => (string) $user->name,
-                'email'        => (string) $user->email,
-                'contact_no'   => (string) ($user->contact_no ?? ''),
-                'company_name' => (string) ($user->company_name ?? ''),
-                'country'      => (string) ($user->country ?? ''),
-                'plan'         => (string) ($user->plan ?? ''),
-                'role'         => $user->roleName(),
-            ],
-        ]);
+        return response()->json(['status' => 2, 'message' => "Parameters missing."], 400);
     }
-
-    /* ==================================================================
-     |  Trash / restore
-     * ================================================================== */
 
     public function toggleTrash(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'id'          => ['required', 'integer', 'min:1'],
-            'action_type' => ['required', 'integer', 'in:0,1'],
-        ]);
-
-        $user = User::find((int) $validated['id']);
-
-        if (! $user) {
-            return response()->json(['status' => 0, 'message' => 'User not found.'], 404);
-        }
-
-        $targetAction = (int) $validated['action_type'];
-
-        if ($user->id === (int) session('id')) {
-            return response()->json(['status' => 0, 'message' => 'You cannot trash your own account.'], 403);
-        }
-
-        if (! $this->canManageTarget($user)) {
-            return response()->json(['status' => 0, 'message' => 'You cannot modify this account.'], 403);
-        }
-
         try {
-            $user->forceFill(['trash' => $targetAction])->save();
+            $id = base64_decode($request->input('id'), true);
 
-            track_activity(
-                ['trash' => $targetAction === 1 ? 0 : 1],
-                $user,
-                ['trash' => $targetAction],
-                $user->id,
-                'users',
-                $targetAction === 1 ? 3 : 2
-            );
-        } catch (Throwable $e) {
-            Log::error('Trash toggle failed: '.$e->getMessage());
+            $user = User::findOrFail($id);
 
-            return response()->json(['status' => 0, 'message' => 'Operation failed. Please try again.'], 500);
+            $targetAction = (int) $request->input('action_type', 0);
+
+            DB::beginTransaction();
+
+            $previousData = [
+                'trash' => $user->trash,
+            ];
+
+            $user->update([
+                'trash' => $targetAction,
+            ]);
+
+            if (function_exists('track_activity')) {
+                track_activity(
+                    $previousData,
+                    $this->users,
+                    [
+                        'trash' => $targetAction,
+                    ],
+                    $id,
+                    'users',
+                    1
+                );
+            }
+
+            DB::commit();
+
+            $this->clearUserCache($id);
+
+            $message = $targetAction === 1
+                ? 'Record dropped into trash logs safely.'
+                : 'Record trace restored back successfully.';
+
+            return response()->json([
+                'status'  => 1,
+                'message' => $message,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'status'  => 0,
+                'message' => 'State processing system transaction failure.',
+            ], 500);
         }
-
-        return response()->json([
-            'status'  => 1,
-            'message' => $targetAction === 1
-                ? 'User moved to trash.'
-                : 'User restored successfully.',
-        ]);
     }
 
-    /* ==================================================================
-     |  Admin triggered activation mail
-     * ================================================================== */
-
-    public function resendActivation(Request $request): JsonResponse
+    private function clearUserCache(?int $userId = null): void
     {
-        $validated = $request->validate(['id' => ['required', 'integer', 'min:1']]);
+        Cache::forget('count_active');
+        Cache::forget('count_inactive');
+        Cache::forget('count_total');
+        Cache::forget('dt_total_base');
+        Cache::forget('users_all_count');
+        Cache::forget('users_inactive_count');
+        Cache::forget('users_active_count');
+        Cache::forget('users_list_data');
 
-        $user = User::find((int) $validated['id']);
-
-        if (! $user) {
-            return response()->json(['status' => 0, 'message' => 'User not found.'], 404);
+        if ($userId) {
+            Cache::forget("user_details_{$userId}");
         }
-
-        if ((int) $user->activated === 1) {
-            return response()->json(['status' => 0, 'message' => 'This account is already activated.']);
-        }
-
-        $token = $this->authLibrary->issueToken($user, 'activate_token');
-        $sent  = $this->authLibrary->sendActivationEmail($user, $token);
-
-        return response()->json([
-            'status'  => $sent ? 1 : 0,
-            'message' => $sent
-                ? 'Activation link sent successfully.'
-                : 'The email service is not responding. Please try again shortly.',
-        ], $sent ? 200 : 503);
-    }
-
-    /* ==================================================================
-     |  Authorization helpers
-     * ================================================================== */
-
-    /**
-     * May the signed-in manager act on this target account?
-     * Rules: Super Admin may manage anyone; everyone else only accounts of
-     * strictly LOWER rank (an admin cannot tamper with another admin or the
-     * Super Admin, an editor cannot touch admins, etc.).
-     */
-    protected function canManageTarget(User $target): bool
-    {
-        $actor = request()->attributes->get('sessionUser') ?? User::find(session('id'));
-
-        if (! $actor) {
-            return false;
-        }
-
-        if ($actor->isProtected()) {
-            return true;
-        }
-
-        return $target->roleRank() < $actor->roleRank();
     }
 }

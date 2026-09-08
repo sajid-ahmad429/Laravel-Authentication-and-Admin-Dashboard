@@ -1,102 +1,66 @@
-# AdminPro — Laravel Authentication & Admin Dashboard (Production Edition)
+<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
 
-A hardened, production-ready admin system: session-based authentication with
-email activation, rank-based role authorization, full audit logging and
-**Tabulator server-side data tables** — built on Laravel 11 + Spatie
-Permission + the Materio (Bootstrap 5) design system.
+<p align="center">
+<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
+</p>
 
----
+## About Laravel
 
-## Security architecture
+Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
 
-| Layer | Mechanism |
-|---|---|
-| Authentication | Custom session auth (`App\Libraries\AuthLibrary`) — session ID regeneration on login/logout, remember-me via selector/validator cookies with **server-side expiry + replay rotation** |
-| Page access | `auth.session` middleware — fail-closed, re-validates the account on every request (suspended/trashed users are cut off immediately) |
-| Feature access | `role.access:{feature}` — rank ladder (`config/auth.php: role_rank`, `feature_ranks`). Super Admin bypasses; everyone else must meet the rank. Unknown roles/panels **deny** |
-| Object access | `UserController::canManageTarget()` — you can only act on accounts of strictly lower rank (an admin cannot tamper with admins or the Super Admin) |
-| Role assignment | Registering users always get `subscriber`; managers can only assign roles at or below their own rank |
-| Password reset | Email token (SHA-256 hashed, 1 h expiry) → **single-use session-bound grant** → new password. The old "POST a password for any user id" hole is closed and regression-tested |
-| CSRF | All mutations are POST-only; logout is a POST form; data APIs require `X-CSRF-TOKEN` |
-| Rate limiting | Named limiters for `login` (5/min), `register` (5/10min), `reset` (3/5min), keyed on identity+IP |
-| Transport | Security headers middleware (`nosniff`, `X-Frame-Options`, HSTS in production), `noindex` on admin pages |
-| Audit | Every mutation writes to `activitymaster` (`track_activity()` helper + `LogsActivity` model trait) |
+- [Simple, fast routing engine](https://laravel.com/docs/routing).
+- [Powerful dependency injection container](https://laravel.com/docs/container).
+- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
+- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
+- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
+- [Robust background job processing](https://laravel.com/docs/queues).
+- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
 
-### Historical vulnerabilities fixed in this fork
+Laravel is accessible, powerful, and provides tools required for large, robust applications.
 
-1. **Account takeover** — `POST /updatepassword/{id}` accepted any numeric id with no token check.
-2. **Universal admin access** — every role prefix (`/subscriber/...` included) exposed all admin pages & data APIs to any logged-in user.
-3. **Instant privilege escalation** — public registration defaulted new users to the `admin` role.
-4. **Hardcoded shared password** (`Smart@#123`) for admin-created users.
-5. **Remember-me cookies never expired** and never rotated the validator.
-6. **The `roles` string column shadowed Spatie's `roles()` relation**, silently breaking `hasRole()`/`getRoleNames()` (dropped via data migration).
-7. **Audit logger wrote to non-existent columns** — audit trail silently failed.
-8. Public endpoints for email bombing (`/send-email`), unauthenticated status/delete (`/chnage_status`), job dispatch and mail tests (diagnostics routes).
-9. Broken route names (`admin.roles.destroy`) fatalling the roles table; CSRF bypass via GET mutations; CSRF token leaked in a JSON API.
+## Learning Laravel
 
----
+Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
 
-## Server-side tables (Tabulator)
+You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
 
-All list screens (Users, Roles, Permissions, Activity Logs) use **Tabulator 6.3
-(vendored locally — zero CDN dependencies)** through a shared wrapper
-(`public/assets/js/admin-tables.js`):
+If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
 
-* Remote pagination, sorting and filtering via a clean Laravel contract:
-  `page, size, sort_by, sort_dir, search, status, trash, role`
-* Whitelisted sort columns, escaped LIKE search (no wildcard injection)
-* Debounced global search, filter chips, page-size selector, CSV/JSON export
-* XSS-safe DOM formatters — the server returns **clean JSON, never HTML**
-* Responsive collapse layout for phones/tablets; light + dark theme aware
-* Structured error recovery (401/403/419/500) with retry
+## Laravel Sponsors
 
----
+We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
 
-## Getting started
+### Premium Partners
 
-```bash
-composer install
-npm install
-cp .env.example .env && php artisan key:generate
+- **[Vehikl](https://vehikl.com/)**
+- **[Tighten Co.](https://tighten.co)**
+- **[WebReinvent](https://webreinvent.com/)**
+- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
+- **[64 Robots](https://64robots.com)**
+- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
+- **[Cyber-Duck](https://cyber-duck.co.uk)**
+- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
+- **[Jump24](https://jump24.co.uk)**
+- **[Redberry](https://redberry.international/laravel/)**
+- **[Active Logic](https://activelogic.com)**
+- **[byte5](https://byte5.de)**
+- **[OP.GG](https://op.gg)**
 
-php artisan migrate
-php artisan db:seed          # roles, permissions + super admin
-php artisan db:seed --class=LargeUserSeeder   # optional demo data (1000 users)
+## Contributing
 
-php artisan serve
-npm run dev
-```
+Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
 
-The seeder prints the generated Super Admin credentials **once** — or set
-`SEED_SUPERADMIN_EMAIL` / `SEED_SUPERADMIN_PASSWORD` in `.env` first.
+## Code of Conduct
 
-### Test accounts
+In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
 
-After seeding, `php artisan tinker`:
+## Security Vulnerabilities
 
-```php
-$user = App\Models\User::where('email', env('SEED_SUPERADMIN_EMAIL', 'admin@example.com'))->first();
-$user->assignRole('admin'); // or create additional managers via the UI
-```
+If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
 
-## Production deployment checklist
+## License
 
-- [ ] `APP_ENV=production`, `APP_DEBUG=false`, `APP_KEY` set
-- [ ] HTTPS enabled (`SESSION_SECURE_COOKIE=true`, HSTS header auto-applies)
-- [ ] `php artisan config:cache route:cache view:cache event:cache`
-- [ ] `php artisan queue:work` (or supervisor) — activation/reset emails queue via `ShouldQueue` mailables
-- [ ] Scheduler for token pruning: add `Artisan::command`/schedule entry calling `AuthModel::pruneExpiredTokens()` daily
-- [ ] Cache store `redis` recommended (table counters + dashboard aggregates are cached with central invalidation)
-- [ ] Run the test suite: `php artisan test`
-
-## Key files
-
-```
-app/Http/Middleware/      EnsureSessionAuthenticated, RoleMiddleware, SecurityHeaders
-app/Libraries/AuthLibrary.php   Login/register/activation/reset/remember-me service
-app/Http/Controllers/     Auth, User (Tabulator API), Role, Permission, ActivityLog, Common
-public/assets/js/admin-tables.js        AdminTable factory + AdminUI helpers
-public/assets/css/tabulator-materio.css Table theme (light/dark)
-config/auth.php           role_rank, feature_ranks, assignable_roles, throttle
-tests/Feature/            AuthenticationTest, AuthorizationTest (regression guards)
-```
+The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).

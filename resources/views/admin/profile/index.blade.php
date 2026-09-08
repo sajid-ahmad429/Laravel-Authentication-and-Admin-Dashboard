@@ -1,74 +1,70 @@
-@section('title', 'My Profile')
 @include('Admin.templates.header')
 
-
 @php
-    $initials = collect(explode(' ', (string) ($user->name ?? 'U')))
-        ->filter()->map(fn ($p) => mb_substr($p, 0, 1))->take(2)->implode('');
+    $role = session('role');
+    $roleName = !empty($role) && in_array($role, ['superadmin', 'admin']) ? $role : 'admin';
 @endphp
 
 <div class="content-wrapper">
     <div class="container-xxl flex-grow-1 container-p-y">
 
-        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-            <div>
-                <h4 class="fw-bold mb-1">Profile Settings</h4>
-                <p class="text-muted mb-0">Update your personal information, avatar and password.</p>
+        <div class="card border-0 shadow-sm max-w-3xl mx-auto">
+            <div class="card-header border-bottom bg-transparent py-3">
+                <h5 class="card-title fw-bold mb-1 text-dark">Profile Settings</h5>
+                <p class="text-muted mb-0 small">Update your personal information and account avatar.</p>
             </div>
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-0">
-                    <li class="breadcrumb-item"><a href="{{ route('panel.dashboard') }}">Home</a></li>
-                    <li class="breadcrumb-item active">Profile</li>
-                </ol>
-            </nav>
-        </div>
 
-        <div class="card border-0 shadow-sm" style="max-width: 860px;">
+            @if(session('success'))
+                <div class="alert alert-success alert-dismissible mx-4 mt-3" role="alert">
+                    {{ session('success') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+
             <div class="card-body p-4">
-                <form action="{{ route('panel.profile.update') }}" method="POST" enctype="multipart/form-data" id="profileForm">
+                <form action="{{ route($roleName . '.profile.update') }}" method="POST" enctype="multipart/form-data">
                     @csrf
 
-                    <div class="d-flex align-items-center gap-4 mb-4 flex-wrap">
+                    <div class="d-flex align-items-center gap-4 mb-4">
                         <div class="avatar avatar-xl">
                             @if(!empty($user->avatar))
-                                <img src="{{ asset($user->avatar) }}" alt="Avatar" class="rounded-circle" width="80" height="80" style="object-fit:cover">
+                                <img src="{{ asset($user->avatar) }}" alt="Avatar" class="rounded-circle object-cover" width="80" height="80">
                             @else
-                                <div class="avatar-initial bg-label-primary rounded-circle fs-2 fw-bold text-uppercase p-3">
-                                    {{ strtoupper($initials ?: 'U') }}
+                                <div class="avatar-initial bg-label-primary rounded-circle fs-3 font-bold text-uppercase p-3">
+                                    {{ substr($user->name ?? 'U', 0, 2) }}
                                 </div>
                             @endif
                         </div>
-                        <div class="flex-grow-1" style="min-width: 240px;">
+                        <div>
                             <label class="form-label fw-bold mb-1">Profile Photo</label>
-                            <input type="file" name="avatar" accept="image/jpeg,image/png,image/jpg,image/webp" class="form-control">
-                            <small class="text-muted d-block mt-1">JPG, PNG or WEBP, max 2 MB — auto-resized &amp; converted to WebP.</small>
+                            <input type="file" name="avatar" accept="image/jpeg,image/png,image/jpg,image/webp" class="form-control form-control-sm">
+                            <small class="text-muted d-block mt-1">Allowed: JPG, PNG, WEBP (Max 2MB). Auto-resized & converted to WebP.</small>
                         </div>
                     </div>
 
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Full Name</label>
-                            <input type="text" name="name" value="{{ old('name', $user->name ?? '') }}" required class="form-control" maxlength="120">
+                            <input type="text" name="name" value="{{ old('name', $user->name ?? '') }}" required class="form-control">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Email Address</label>
-                            <input type="email" value="{{ $user->email ?? '' }}" disabled class="form-control">
-                            <small class="text-muted">Contact your administrator to change your email.</small>
+                            <input type="email" value="{{ $user->email ?? '' }}" disabled class="form-control bg-light">
                         </div>
                     </div>
 
                     <div class="row g-3 mb-4">
                         <div class="col-md-4">
                             <label class="form-label fw-bold">Contact Number</label>
-                            <input type="text" name="contact_no" value="{{ old('contact_no', $user->contact_no ?? '') }}" class="form-control" maxlength="15">
+                            <input type="text" name="contact_no" value="{{ old('contact_no', $user->contact_no ?? '') }}" class="form-control">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-bold">Company Name</label>
-                            <input type="text" name="company" value="{{ old('company', $user->company_name ?? '') }}" class="form-control" maxlength="150">
+                            <input type="text" name="company" value="{{ old('company_name', $user->company_name ?? '') }}" class="form-control">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-bold">Country</label>
-                            <input type="text" name="country" value="{{ old('country', $user->country ?? '') }}" class="form-control" maxlength="100">
+                            <input type="text" name="country" value="{{ old('country', $user->country ?? '') }}" class="form-control">
                         </div>
                     </div>
 
@@ -76,17 +72,13 @@
 
                     <h6 class="fw-bold mb-3">Change Password</h6>
                     <div class="row g-3 mb-4">
-                        <div class="col-md-4">
-                            <label class="form-label">Current Password</label>
-                            <input type="password" name="current_password" class="form-control" placeholder="Required for password change" autocomplete="current-password">
-                        </div>
-                        <div class="col-md-4">
+                        <div class="col-md-6">
                             <label class="form-label">New Password</label>
-                            <input type="password" name="password" class="form-control" placeholder="Leave blank to keep current" autocomplete="new-password">
+                            <input type="password" name="password" class="form-control" placeholder="Leave blank to keep current">
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-6">
                             <label class="form-label">Confirm New Password</label>
-                            <input type="password" name="password_confirmation" class="form-control" placeholder="Repeat new password" autocomplete="new-password">
+                            <input type="password" name="password_confirmation" class="form-control" placeholder="Confirm password">
                         </div>
                     </div>
 

@@ -2,36 +2,52 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Builder;
+use App\Traits\LogsActivity;
 use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable, HasRoles;
-
+    /** @use HasFactory<\Database\Factories\UserFactory> */
+    use HasFactory, Notifiable, LogsActivity, HasRoles;
+    
     protected $table = 'users';
 
     /**
-     * Mass assignment is restricted to safe, user-editable columns.
-     * Security columns (activated, status, trash, tokens) are only ever
-     * written through explicit forceFill() calls in reviewed code paths.
+     * The attributes that are mass assignable.
      *
      * @var array<int, string>
      */
     protected $fillable = [
+        'id',
         'name',
         'email',
         'avatar',
         'contact_no',
         'company_name',
         'country',
+        'roles',
         'plan',
+        'email_verified_at',
+        'password',
+        'reset_token',
+        'reset_expire',
+        'activated',
+        'activate_token',
+        'activate_expire',
+        'remember_token',
+        'status',
+        'trash',
     ];
 
+    /**
+     * The attributes that should be hidden for serialization.
+     *
+     * @var array<int, string>
+     */
     protected $hidden = [
         'password',
         'remember_token',
@@ -39,127 +55,115 @@ class User extends Authenticatable
         'activate_token',
     ];
 
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
-            'password'          => 'hashed',
-            'reset_expire'      => 'datetime',
-            'activate_expire'   => 'datetime',
-            'status'            => 'integer',
-            'trash'             => 'integer',
-            'activated'         => 'integer',
+            'password' => 'hashed',
+            'reset_expire' => 'datetime',
+            'activate_expire' => 'datetime',
+            'status' => 'integer',
+            'trash' => 'integer',
+            'activated' => 'integer',
         ];
     }
 
-    /* ==================================================================
-     |  Scopes
-     * ================================================================== */
-
-    /** Non-trashed users. */
-    public function scopeNotDeleted(Builder $query): Builder
-    {
-        return $query->where('trash', 0);
-    }
-
-    /** Non-trashed + active status. */
+    /**
+     * Performance optimization: Scope for active users
+     */
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('status', 1)->where('trash', 0);
     }
 
-    /** Non-trashed + inactive status. */
+    /**
+     * Performance optimization: Scope for inactive users
+     */
     public function scopeInactive(Builder $query): Builder
     {
-        return $query->where('status', 0)->where('trash', 0);
-    }
-
-    /* ==================================================================
-     |  Helpers
-     * ================================================================== */
-
-    /**
-     * Primary Spatie role name (lowercase), or null when none assigned.
-     */
-    public function roleName(): ?string
-    {
-        return strtolower($this->getRoleNames()->first() ?? '');
+        return $query->where('status', 0);
     }
 
     /**
-     * Numeric rank of the user's primary role.
+     * Performance optimization: Scope for non-deleted users
      */
-    public function roleRank(): int
+    public function scopeNotDeleted(Builder $query): Builder
     {
-        return (int) config("auth.role_rank.{$this->roleName()}", 0);
+        return $query->where('trash', 0);
     }
 
     /**
-     * Is this a system-protected role account (e.g. Super Admin)?
+     * Performance optimization: Scope for valid users (not status 2, not deleted)
      */
-    public function isProtected(): bool
+    public function scopeValid(Builder $query): Builder
     {
-        return in_array($this->roleName(), (array) config('auth.protected_roles', ['superadmin']), true);
+        return $query->where('status', '!=', 2)->where('trash', 0);
     }
 
     /**
-     * Avatar URL with graceful fallback to UI initials rendered client side.
+     * Optimized method using scopes and caching (Converted to Static)
      */
-    protected function avatarUrl(): Attribute
+    public static function getAllCount()
     {
-        return Attribute::make(
-            get: fn () => $this->avatar ? asset($this->avatar) : null,
-        );
-    }
-
-    /* ==================================================================
-     |  Cache
-     * ================================================================== */
-
-    /**
-     * Central cache keys for aggregate counters — the ONLY place that knows
-     * the key names, so invalidation can never drift again.
-     */
-    public static function statCacheKeys(): array
-    {
-        return ['users_stats_v2'];
-    }
-
-    public static function flushStatCache(): void
-    {
-        foreach (self::statCacheKeys() as $key) {
-            cache()->forget($key);
-        }
-    }
-
-    /**
-     * Cached dashboard aggregate (single query, 5 min TTL).
-     */
-    public static function cachedStats(): array
-    {
-        return cache()->remember('users_stats_v2', 300, function () {
-            $row = self::query()
-                ->selectRaw("COUNT(CASE WHEN trash = 0 THEN 1 END) AS total_count")
-                ->selectRaw("COUNT(CASE WHEN trash = 0 AND status = 1 THEN 1 END) AS active_count")
-                ->selectRaw("COUNT(CASE WHEN trash = 0 AND status = 0 THEN 1 END) AS inactive_count")
-                ->selectRaw("COUNT(CASE WHEN trash = 1 THEN 1 END) AS trashed_count")
-                ->selectRaw("COUNT(CASE WHEN trash = 0 AND activated = 0 THEN 1 END) AS unactivated_count")
-                ->first();
-
-            return [
-                'total'       => (int) ($row->total_count ?? 0),
-                'active'      => (int) ($row->active_count ?? 0),
-                'inactive'    => (int) ($row->inactive_count ?? 0),
-                'trashed'     => (int) ($row->trashed_count ?? 0),
-                'unactivated' => (int) ($row->unactivated_count ?? 0),
-            ];
+        return cache()->remember('users_all_count', 300, function () {
+            return self::valid()->count();
         });
     }
 
-    protected static function booted(): void
+    /**
+     * Optimized method using scopes and caching (Converted to Static)
+     */
+    public static function inactiveCount()
     {
-        // Any create/update/delete invalidates the aggregate cache.
-        static::saved(fn () => self::flushStatCache());
-        static::deleted(fn () => self::flushStatCache());
+        return cache()->remember('users_inactive_count', 300, function () {
+            return self::inactive()->count();
+        });
+    }
+
+    /**
+     * Optimized method using scopes and caching (Converted to Static)
+     */
+    public static function activeCount()
+    {
+        return cache()->remember('users_active_count', 300, function () {
+            return self::active()->count();
+        });
+    }
+
+    /**
+     * Get user list data with optimized query
+     */
+    public static function getListData($columns = ['id', 'name', 'email', 'roles', 'contact_no', 'country', 'company_name', 'plan', 'status', 'activated'])
+    {
+        return cache()->remember('users_list_data', 300, function () use ($columns) {
+            return self::select($columns)->valid()->get();
+        });
+    }
+
+    /**
+     * Clear user cache when user data changes
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::saved(function () {
+            cache()->forget('users_all_count');
+            cache()->forget('users_inactive_count');
+            cache()->forget('users_active_count');
+            cache()->forget('users_list_data');
+        });
+
+        static::deleted(function () {
+            cache()->forget('users_all_count');
+            cache()->forget('users_inactive_count');
+            cache()->forget('users_active_count');
+            cache()->forget('users_list_data');
+        });
     }
 }

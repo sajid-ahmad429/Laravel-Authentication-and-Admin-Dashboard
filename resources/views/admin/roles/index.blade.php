@@ -1,145 +1,237 @@
-@section('title', 'Roles & Access Control')
 @include('Admin.templates.header')
 
+@php
+    $role = session('role');
+    $roleName = !empty($role) && in_array($role, ['superadmin', 'admin']) ? $role : 'admin';
+@endphp
+
+<!-- SweetAlert2 CSS -->
+<style>
+    .dataTables_wrapper .dataTables_length select,
+    .dataTables_wrapper .dataTables_filter input {
+        border: 1px solid #dbdade !important;
+        border-radius: 0.5rem !important;
+        padding: 0.45rem 0.9rem !important;
+        background-color: #fff !important;
+        color: #6f6b7d !important;
+        font-size: 0.9375rem;
+    }
+
+    .dataTables_wrapper .dataTables_filter input:focus,
+    .dataTables_wrapper .dataTables_length select:focus {
+        border-color: #7367f0 !important;
+        box-shadow: 0 0.125rem 0.25rem rgba(115, 103, 240, 0.15) !important;
+        outline: none;
+    }
+
+    table.dataTable.table-striped>tbody>tr:nth-of-type(odd) {
+        background-color: #fbfbfd !important;
+    }
+
+    table.dataTable tbody tr:hover {
+        background-color: #f6f5fa !important;
+    }
+
+    .dt-buttons .btn {
+        border-radius: 0.375rem;
+        font-weight: 500;
+        padding: 0.438rem 0.875rem;
+        transition: all 0.2s ease-in-out;
+    }
+
+    .dt-buttons .btn:hover {
+        transform: translateY(-1px);
+    }
+
+    /* Fallback protection to clear backdrop bugs */
+    body:not(.offcanvas-open) .offcanvas-backdrop {
+        display: none !important;
+    }
+
+    .dataTables_filter {
+        position: relative;
+    }
+
+    .dataTables_filter input {
+        padding-left: 35px !important;
+    }
+
+    .dataTables_filter label {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .dataTables_filter label::before {
+        content: "\F0349";
+        font-family: "Material Design Icons";
+        position: absolute;
+        left: 7px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #a8b1bc;
+        font-size: 18px;
+        pointer-events: none;
+    }
+</style>
 
 <div class="content-wrapper">
     <div class="container-xxl flex-grow-1 container-p-y">
 
-        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-            <div>
-                <h4 class="fw-bold mb-1">Roles &amp; Access Control</h4>
-                <p class="text-muted mb-0">Define roles and attach granular permissions to them.</p>
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header border-bottom bg-transparent py-3 d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                    <h5 class="card-title fw-bold mb-1 text-dark">Roles Management</h5>
+                    <p class="text-muted mb-0 small">Define system roles and assign capabilities across the platform.</p>
+                </div>
             </div>
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-0">
-                    <li class="breadcrumb-item"><a href="{{ route('panel.dashboard') }}">Home</a></li>
-                    <li class="breadcrumb-item active">Roles</li>
-                </ol>
-            </nav>
+
+            @if(session('success'))
+                <div class="alert alert-success alert-dismissible mx-4 mt-3" role="alert">
+                    {{ session('success') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+
+            <div class="card-body px-4 py-4">
+                <div class="card-datatable table-responsive">
+                    <table class="datatables table table-hover align-middle border-top w-full" id="rolesTable" style="width: 100%;">
+                        <thead class="bg-slate-50/75 backdrop-blur-md border-y border-slate-200/80 sticky top-0 z-10">
+                            <tr>
+                                <th>ID</th>
+                                <th>Role Name</th>
+                                <th>Assigned Permissions</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                    </table>
+                </div>
+            </div>
         </div>
 
-        <div class="card border-0 shadow-sm">
-            <div class="adt-toolbar" id="rolesToolbar">
-                <div class="adt-search">
-                    <i class="mdi mdi-magnify adt-search-icon"></i>
-                    <input type="search" id="roleSearch" placeholder="Search roles…" autocomplete="off"
-                        aria-label="Search roles">
-                </div>
-                <div class="adt-actions">
-                    <button class="btn btn-primary d-flex align-items-center gap-1" type="button" id="addRoleBtn">
-                        <i class="mdi mdi-plus"></i> <span>New Role</span>
-                    </button>
-                </div>
+        <!-- Offcanvas drawer to add new role -->
+        <div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasAddRole" aria-labelledby="offcanvasAddRoleLabel">
+            <div class="offcanvas-header border-bottom bg-light">
+                <h5 id="offcanvasAddRoleLabel" class="offcanvas-title fw-bold text-dark">Add New Role</h5>
+                <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
             </div>
-            <div class="px-2 pb-2" id="rolesTable"></div>
+            <div class="offcanvas-body mx-0 flex-grow-0 h-100 p-4">
+                <form action="{{ route($roleName . '.roles.store') }}" method="POST">
+                    @csrf
+                    <div class="form-floating form-floating-outline mb-4">
+                        <input type="text" class="form-control" id="roleNameInput" name="name" placeholder="Role Name (e.g. editor)" required />
+                        <label for="roleNameInput">Role Name <span class="text-danger">*</span></label>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold mb-2">Assign Permissions</label>
+                        <div class="row g-2">
+                            @foreach($permissions as $permission)
+                            <div class="col-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="permissions[]" value="{{ $permission->name }}" id="perm_{{ $permission->id }}">
+                                    <label class="form-check-label text-capitalize" for="perm_{{ $permission->id }}">
+                                        {{ $permission->name }}
+                                    </label>
+                                </div>
+                            </div>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-3 mt-4">
+                        <button type="submit" class="btn btn-primary flex-fill shadow-sm">Save Role</button>
+                        <button type="reset" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button>
+                    </div>
+                </form>
+            </div>
         </div>
+
     </div>
     @include('Admin.templates.footer')
 </div>
 
-{{-- ======================= Create role offcanvas ======================= --}}
-<div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasRoleForm" aria-labelledby="roleFormTitle">
-    <div class="offcanvas-header border-bottom">
-        <h5 class="offcanvas-title fw-bold" id="roleFormTitle">Create Role</h5>
-        <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
-    </div>
-    <div class="offcanvas-body p-4">
-        <form id="roleForm" action="{{ route('panel.roles.store') }}" method="POST">
-            @csrf
-            <div class="mb-3">
-                <label class="form-label" for="roleName">Role Name <span class="text-danger">*</span></label>
-                <div class="input-group">
-                    <span class="input-group-text">/</span>
-                    <input type="text" class="form-control" id="roleName" name="name"
-                        placeholder="e.g. content-writer" pattern="[a-z0-9\-]+" maxlength="50" required>
-                </div>
-                <div class="form-text">Lowercase letters, numbers and dashes only.</div>
-            </div>
-
-            <div class="mb-4">
-                <label class="form-label">Permissions</label>
-                <div class="border rounded p-3" style="max-height: 320px; overflow-y: auto;">
-                    @forelse($permissions as $permission)
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="permissions[]"
-                                id="perm-{{ $permission->id }}" value="{{ $permission->name }}">
-                            <label class="form-check-label" for="perm-{{ $permission->id }}">
-                                {{ ucwords(str_replace(['-', '_'], ' ', $permission->name)) }}
-                            </label>
-                        </div>
-                    @empty
-                        <p class="text-muted mb-0">No permissions defined yet.</p>
-                    @endforelse
-                </div>
-            </div>
-
-            <div class="d-flex gap-2">
-                <button type="submit" class="btn btn-primary flex-fill">Create Role</button>
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-@push('scripts')
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    var deleteUrl = '{{ route('panel.roles.destroy') }}';
+    $(document).ready(function() {
+        $.ajaxSetup({
+            headers: {
+                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+            }
+        });
 
-    var table = new AdminTable('#rolesTable', {
-        url: '{{ route('panel.roles.data') }}',
-        initialSort: [{ column: 'id', dir: 'desc' }],
-        searchInput: '#roleSearch',
-        exportName: 'roles',
-        columns: [
-            { title: 'Role', field: 'label', minWidth: 180, formatter: function (cell) {
-                var d = cell.getRow().getData();
-                var icon = d.protected ? 'mdi-shield-crown-outline text-danger' : 'mdi-account-circle-outline';
-                return '<div class="d-flex align-items-center gap-2">' +
-                    '<span class="stat-icon primary" style="width:2.2rem;height:2.2rem;font-size:1rem;border-radius:.5rem">' +
-                    '<i class="mdi ' + icon + '"></i></span>' +
-                    '<div><div class="fw-semibold">' + AdminUI.escape(d.label) + '</div>' +
-                    '<div class="text-muted" style="font-size:.76rem">/' + AdminUI.escape(d.name) + '</div></div></div>';
-            } },
-            { title: 'Users', field: 'users_count', width: 100, hozAlign: 'center', formatter: function (cell) {
-                var v = cell.getValue() || 0;
-                return AdminUI.fmt.badge(v + ' user' + (v === 1 ? '' : 's'), 'secondary', 'mdi-account-multiple-outline');
-            } },
-            { title: 'Permissions', field: 'permissions', minWidth: 260, formatter: function (cell) {
-                var perms = cell.getValue() || [];
-                if (!perms.length) return '<span class="text-muted">No permissions</span>';
-                var shown = perms.slice(0, 4).map(function (p) {
-                    return '<span class="adt-badge primary" style="text-transform:capitalize">' + AdminUI.escape(p) + '</span>';
-                }).join(' ');
-                var extra = perms.length > 4
-                    ? ' <span class="adt-badge dark">+' + (perms.length - 4) + ' more</span>' : '';
-                return '<div class="d-flex flex-wrap gap-1">' + shown + extra + '</div>';
-            }, headerSort: false },
-            { title: 'Actions', field: 'actions', width: 90, hozAlign: 'center', headerSort: false,
-              formatter: AdminUI.fmt.actions([
-                  {
-                      title: 'Delete role', icon: 'mdi-trash-can-outline', danger: true,
-                      when: function (d) { return !d.protected; },
-                      onClick: function (d) {
-                          AdminUI.confirm({
-                              title: 'Delete role “' + d.label + '”?',
-                              text: 'This action cannot be undone.',
-                              confirmText: 'Delete', confirmColor: '#ea5455'
-                          }).then(function (ok) {
-                              if (!ok) return;
-                              AdminUI.ajax(deleteUrl, { id: d.id })
-                                  .then(function (res) { AdminUI.toast(res.message, 'success'); table.reload(false); })
-                                  .catch(function (err) { AdminUI.toast(err.message, 'danger'); });
-                          });
-                      }
-                  }
-              ]) }
-        ]
+        $('#rolesTable').DataTable({
+            processing: true,
+            serverSide: true,
+            ajax: {
+                url: "{{ route($roleName . '.roles.data') }}",
+                type: 'POST'
+            },
+            columns: [
+                { data: 'id', name: 'id' },
+                { data: 'name', name: 'name' },
+                { data: 'permissions', name: 'permissions', orderable: false, searchable: false },
+                { data: 'actions', name: 'actions', orderable: false, searchable: false }
+            ],
+            dom: '<"row align-items-center mx-2"' +
+                '<"col-md-2"l>' +
+                '<"col-md-10"<"dt-action-buttons text-xl-end text-lg-start text-md-end text-start d-flex align-items-center justify-content-end flex-md-row flex-column mb-3 mb-md-0 gap-3"fB>>' +
+                '>t' +
+                '<"row mx-2"' +
+                '<"col-sm-12 col-md-6"i>' +
+                '<"col-sm-12 col-md-6"p>' +
+                '>',
+            language: {
+                sLengthMenu: 'Show _MENU_',
+                search: '',
+                searchPlaceholder: 'Search..'
+            },
+            buttons: [
+                {
+                    extend: 'collection',
+                    className: 'btn btn-label-secondary dropdown-toggle me-3',
+                    text: '<i class="mdi mdi-export-variant me-1"></i> <span class="d-none d-sm-inline-block">Export</span>',
+                    buttons: [
+                        {
+                            extend: 'print',
+                            text: '<i class="mdi mdi-printer-outline me-1"></i>Print',
+                            className: 'dropdown-item',
+                            exportOptions: { columns: [0, 1, 2] }
+                        },
+                        {
+                            extend: 'csv',
+                            text: '<i class="mdi mdi-file-document-outline me-1"></i>Csv',
+                            className: 'dropdown-item',
+                            exportOptions: { columns: [0, 1, 2] }
+                        },
+                        {
+                            extend: 'excel',
+                            text: '<i class="mdi mdi-file-excel-outline me-1"></i>Excel',
+                            className: 'dropdown-item',
+                            exportOptions: { columns: [0, 1, 2] }
+                        },
+                        {
+                            extend: 'pdf',
+                            text: '<i class="mdi mdi-file-pdf-box me-1"></i>Pdf',
+                            className: 'dropdown-item',
+                            exportOptions: { columns: [0, 1, 2] }
+                        },
+                        {
+                            extend: 'copy',
+                            text: '<i class="mdi mdi-content-copy me-1"></i>Copy',
+                            className: 'dropdown-item',
+                            exportOptions: { columns: [0, 1, 2] }
+                        }
+                    ]
+                },
+                {
+                    text: '<i class="mdi mdi-plus me-0 me-sm-1"></i><span class="d-none d-sm-inline-block">ADD ROLE</span>',
+                    className: 'add-new btn btn-primary rounded-3 shadow-sm',
+                    attr: {
+                        'data-bs-toggle': 'offcanvas',
+                        'data-bs-target': '#offcanvasAddRole'
+                    }
+                }
+            ]
+        });
     });
-
-    document.getElementById('addRoleBtn').addEventListener('click', function () {
-        new bootstrap.Offcanvas(document.getElementById('offcanvasRoleForm')).show();
-    });
-});
 </script>
-@endpush

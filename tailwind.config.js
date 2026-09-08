@@ -38,6 +38,10 @@ export default {
             strategy: 'class', // Use class strategy for better performance
         }),
     ],
+    // Performance optimizations
+    experimental: {
+        optimizeUniversalDefaults: true,
+    },
     // Reduce CSS bundle size
     corePlugins: {
         // Disable unused plugins for better performance
