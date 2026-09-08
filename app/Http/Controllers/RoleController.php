@@ -20,14 +20,6 @@ class RoleController extends Controller
         ]);
     }
 
-    public function create()
-    {
-        return view('admin.roles.create', [
-            'activeMenu'  => 'roles',
-            'permissions' => Permission::orderBy('name')->get(['id', 'name']),
-        ]);
-    }
-
     /**
      * Server-side data feed for the roles table (Tabulator contract).
      */

@@ -268,23 +268,53 @@ class AuthController extends Controller
      */
     public function dashboard(Request $request)
     {
-        $stats = [
-            'total'     => User::notDeleted()->count(),
-            'active'    => User::notDeleted()->where('status', 1)->count(),
-            'new_today' => User::notDeleted()->whereDate('created_at', today())->count(),
-            'this_month'=> User::notDeleted()->where('created_at', '>=', now()->startOfMonth())->count(),
-        ];
+        $stats = User::cachedStats();
+
+        // 14 day registration trend (single grouped query, cheap on indexed created_at).
+        $trend = cache()->remember('dashboard_trend_14d', 300, function () {
+            $rows = User::notDeleted()
+                ->where('created_at', '>=', now()->subDays(13)->startOfDay())
+                ->selectRaw("DATE(created_at) as day, COUNT(*) as total")
+                ->groupBy('day')
+                ->pluck('total', 'day');
+
+            $days = [];
+            $counts = [];
+            for ($i = 13; $i >= 0; $i--) {
+                $date = now()->subDays($i)->format('Y-m-d');
+                $days[] = now()->subDays($i)->format('d M');
+                $counts[] = (int) ($rows[$date] ?? 0);
+            }
+
+            return ['days' => $days, 'counts' => $counts];
+        });
 
         $recentUsers = User::notDeleted()
-            ->select(['id', 'name', 'email', 'roles', 'plan', 'status', 'activated', 'created_at'])
+            ->with('roles:id,name')
+            ->select(['id', 'name', 'email', 'plan', 'status', 'activated', 'created_at'])
             ->latest('id')
             ->limit(6)
             ->get();
 
+        $roleBreakdown = cache()->remember('dashboard_role_breakdown', 300, function () {
+            try {
+                return \Spatie\Permission\Models\Role::withCount('users')
+                    ->orderByDesc('users_count')
+                    ->limit(6)
+                    ->get()
+                    ->map(fn ($r) => ['name' => $r->name, 'count' => $r->users_count])
+                    ->all();
+            } catch (\Throwable) {
+                return [];
+            }
+        });
+
         return view('masters.home', [
-            'activeMenu'  => 'dashboard',
-            'stats'       => $stats,
-            'recentUsers' => $recentUsers,
+            'activeMenu'    => 'dashboard',
+            'stats'         => $stats,
+            'trend'         => $trend,
+            'recentUsers'   => $recentUsers,
+            'roleBreakdown' => $roleBreakdown,
         ]);
     }
 

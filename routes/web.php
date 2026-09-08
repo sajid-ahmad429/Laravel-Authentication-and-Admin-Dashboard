@@ -90,7 +90,6 @@ Route::prefix('{panel}')
 
         // Access control (admin and above)
         Route::get('/roles', [RoleController::class, 'index'])->middleware('role.access:roles')->name('panel.roles.index');
-        Route::get('/roles/create', [RoleController::class, 'create'])->middleware('role.access:roles')->name('panel.roles.create');
         Route::post('/roles', [RoleController::class, 'store'])->middleware('role.access:roles')->name('panel.roles.store');
         Route::post('/roles/data', [RoleController::class, 'getTableData'])->middleware('role.access:roles')->name('panel.roles.data');
         Route::post('/roles/destroy', [RoleController::class, 'destroy'])->middleware('role.access:roles')->name('panel.roles.destroy');

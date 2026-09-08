@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html lang="en" class="light-style layout-navbar-fixed layout-menu-fixed layout-compact" dir="ltr"
+<html lang="en" class="light-style layout-wide customizer-hide" dir="ltr"
     data-theme="theme-default" data-assets-path="{{ asset('assets/') }}" data-template="vertical-menu-template">
 
 <head>
@@ -9,8 +9,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow">
 
-    <title>@yield('title', 'Dashboard') — {{ config('app.name', 'Admin Dashboard') }}</title>
-    <meta name="description" content="@yield('meta_description', 'Administration panel')" />
+    <title>@yield('auth_title', 'Sign in') — {{ config('app.name', 'Admin Dashboard') }}</title>
+    <meta name="description" content="@yield('auth_description', 'Sign in to your account')" />
 
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="{{ asset('assets/img/favicon/favicon.ico') }}" />
@@ -23,8 +23,6 @@
 
     <!-- Icons -->
     <link rel="stylesheet" href="{{ asset('assets/vendor/fonts/materialdesignicons.css') }}" />
-    <link rel="stylesheet" href="{{ asset('assets/vendor/fonts/fontawesome.css') }}" />
-    <link rel="stylesheet" href="{{ asset('assets/vendor/fonts/flag-icons.css') }}" />
 
     <!-- Menu waves for no-customizer fix -->
     <link rel="stylesheet" href="{{ asset('assets/vendor/libs/node-waves/node-waves.css') }}" />
@@ -36,35 +34,19 @@
 
     <!-- Vendors CSS -->
     <link rel="stylesheet" href="{{ asset('assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css') }}" />
-    <link rel="stylesheet" href="{{ asset('assets/vendor/libs/apex-charts/apex-charts.css') }}" />
     <link rel="stylesheet" href="{{ asset('assets/vendor/libs/@form-validation/umd/styles/index.min.css') }}" />
 
-    <!-- AdminKit shared UI (Tabulator theme, toasts, helpers) -->
-    <link rel="stylesheet" href="{{ asset('assets/vendor/libs/tabulator/tabulator.min.css') }}" />
-    <link rel="stylesheet" href="{{ asset('assets/css/tabulator-materio.css') }}" />
-
     <!-- Page CSS -->
-    @stack('styles')
+    <link rel="stylesheet" href="{{ asset('assets/vendor/css/pages/page-auth.css') }}" />
 
     <!-- Helpers -->
     <script src="{{ asset('assets/vendor/js/helpers.js') }}"></script>
     <!--! Template customizer & Theme config files MUST be included after core stylesheets and helpers.js in the <head> section -->
     <script src="{{ asset('assets/vendor/js/template-customizer.js') }}"></script>
     <script src="{{ asset('assets/js/config.js') }}"></script>
+
+    @stack('auth_styles')
 </head>
 
 <body>
-    <!-- Layout wrapper -->
-    <div class="layout-wrapper layout-content-navbar">
-        <div class="layout-container">
-
-        <!-- Sidebar Section -->
-        @include('Admin.templates.sidebar')
-        @include('Admin.templates.navbar')
-
-        <!-- Flash messages (rendered as toasts by admin-tables.js) -->
-        <div class="d-none">
-            <div data-flash="success">{{ session('success') }}</div>
-            <div data-flash="danger">{{ session('danger') }}</div>
-            <div data-flash="info">{{ session('info') }}</div>
-        </div>
+    <!-- Content -->
