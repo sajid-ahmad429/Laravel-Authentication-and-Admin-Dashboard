@@ -7,6 +7,8 @@ use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
+use App\Http\Requests\StoreRoleRequest;
+use App\Http\Requests\GetTableDataRequest;
 
 class RoleController extends Controller
 {
@@ -18,17 +20,13 @@ class RoleController extends Controller
         return view('admin.roles.index', compact('permissions', 'activeMenu'));
     }
 
-    public function getTableData(Request $request)
+    public function getTableData(GetTableDataRequest $request)
     {
         if (!$request->ajax()) {
             return response()->json(['status' => 0, 'message' => 'Invalid Request'], 400);
         }
 
-        $validated = $request->validate([
-            'start'          => ['required', 'integer', 'min:0'],
-            'length'         => ['required', 'integer', 'min:1'],
-            'search.value'   => ['nullable', 'string', 'max:100'],
-        ]);
+        $validated = $request->validated();
 
         $query = Role::with('permissions');
         $recordsTotal = Role::count();
@@ -86,17 +84,14 @@ class RoleController extends Controller
         return view('admin.roles.create', compact('permissions', 'activeMenu'));
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(StoreRoleRequest $request): RedirectResponse
     {
-        $request->validate([
-            'name' => 'required|unique:roles,name',
-            'permissions' => 'nullable|array',
-        ]);
+        $validated = $request->validated();
 
-        $role = Role::create(['name' => strtolower($request->input('name'))]);
+        $role = Role::create(['name' => strtolower($validated['name'])]);
 
-        if ($request->has('permissions')) {
-            $role->syncPermissions($request->input('permissions'));
+        if (!empty($validated['permissions'])) {
+            $role->syncPermissions($validated['permissions']);
         }
 
         $roleName = strtolower(session('role', 'admin'));

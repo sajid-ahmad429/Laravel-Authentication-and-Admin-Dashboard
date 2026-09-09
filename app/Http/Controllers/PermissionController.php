@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 use Spatie\Permission\Models\Permission;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
+use App\Http\Requests\StorePermissionRequest;
+use App\Http\Requests\GetTableDataRequest;
 
 class PermissionController extends Controller
 {
@@ -15,17 +17,13 @@ class PermissionController extends Controller
         return view('admin.permissions.index', compact('activeMenu'));
     }
 
-    public function getTableData(Request $request)
+    public function getTableData(GetTableDataRequest $request)
     {
         if (!$request->ajax()) {
             return response()->json(['status' => 0, 'message' => 'Invalid Request'], 400);
         }
 
-        $validated = $request->validate([
-            'start'          => ['required', 'integer', 'min:0'],
-            'length'         => ['required', 'integer', 'min:1'],
-            'search.value'   => ['nullable', 'string', 'max:100'],
-        ]);
+        $validated = $request->validated();
 
         $query = Permission::query();
         $recordsTotal = Permission::count();
@@ -71,13 +69,11 @@ class PermissionController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(StorePermissionRequest $request): RedirectResponse
     {
-        $request->validate([
-            'name' => 'required|unique:permissions,name',
-        ]);
+        $validated = $request->validated();
 
-        Permission::create(['name' => strtolower($request->input('name'))]);
+        Permission::create(['name' => strtolower($validated['name'])]);
 
         $roleName = strtolower(session('role', 'admin'));
         return redirect()->route($roleName . '.permissions.index')->with('success', 'Permission created successfully.');

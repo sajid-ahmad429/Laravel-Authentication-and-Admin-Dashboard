@@ -31,7 +31,8 @@ class UserService
 
                 $user->update($data);
             } else {
-                $data['password'] = bcrypt('Smart@#123'); // Default password for new users
+                $defaultPassword = config('auth.default_user_password', \Illuminate\Support\Str::random(12));
+                $data['password'] = bcrypt($defaultPassword);
                 $user = User::create($data);
             }
 
