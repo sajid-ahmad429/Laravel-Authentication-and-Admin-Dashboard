@@ -18,9 +18,10 @@ class WelcomeEmailController extends Controller
         $message = "Welcome to Labridge";
 
         try {
-            Mail::to($to)->send(new WelcomeMail($message));
-            // SendWelcomeEmail::dispatch($to, $message);
-            return response()->json(['message' => 'Email sent successfully!']);
+            // Enterprise standard: Always dispatch email to queues to prevent HTTP blocking
+            SendWelcomeEmail::dispatch($to, $message);
+
+            return response()->json(['message' => 'Email dispatch queued successfully!']);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }
