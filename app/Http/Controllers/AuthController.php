@@ -345,11 +345,8 @@ class AuthController extends Controller
         // Active menu for highlighting in the view
         $activeMenu = 'dashboard';
 
-        // Fetch the list of users
-        $users = User::all(); // Fetch all users from the `users` table
-
-        // Pass data to the view
-        return view('admin.auth.superadmin', compact('activeMenu', 'users'));
+        // Pass data to the view without loading all user records into memory
+        return view('Admin.auth.superadmin', compact('activeMenu'));
     }
 
     /*
