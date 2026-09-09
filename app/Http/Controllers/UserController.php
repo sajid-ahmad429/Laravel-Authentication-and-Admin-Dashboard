@@ -187,13 +187,15 @@ class UserController extends Controller
         // ⭐ STEP 2: Yeh search filter lagne ke baad ka total hai (e.g. 15)
         $recordsFiltered = $query->count();
 
-        // Dashboard counters calculation
-        $aggregateData = DB::table('users')
-            ->selectRaw("
-            COUNT(CASE WHEN status = 1 AND trash = 0 THEN 1 END) as active_count,
-            COUNT(CASE WHEN status = 0 AND trash = 0 THEN 1 END) as inactive_count,
-            COUNT(CASE WHEN trash = 1 THEN 1 END) as trashed_count
-        ")->first();
+        // Dashboard counters calculation - cached for 2 minutes to prevent heavy uncached aggregate scans on every AJAX draw
+        $aggregateData = Cache::remember('users_aggregate_counts', 120, function () {
+            return DB::table('users')
+                ->selectRaw("
+                COUNT(CASE WHEN status = 1 AND trash = 0 THEN 1 END) as active_count,
+                COUNT(CASE WHEN status = 0 AND trash = 0 THEN 1 END) as inactive_count,
+                COUNT(CASE WHEN trash = 1 THEN 1 END) as trashed_count
+            ")->first();
+        });
 
         // Sorting Logic
         $sortColumnIndex = isset($validated['order'][0]['column']) ? $validated['order'][0]['column'] : 0;
@@ -344,6 +346,7 @@ class UserController extends Controller
         Cache::forget('users_inactive_count');
         Cache::forget('users_active_count');
         Cache::forget('users_list_data');
+        Cache::forget('users_aggregate_counts');
 
         if ($userId) {
             Cache::forget("user_details_{$userId}");
