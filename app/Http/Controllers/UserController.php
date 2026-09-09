@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use App\Http\Requests\StoreUserRequest;
+use App\Services\UserService;
 
 class UserController extends Controller
 {
@@ -44,76 +46,21 @@ class UserController extends Controller
         return view('masters.users.list', $data);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StoreUserRequest $request, UserService $userService): JsonResponse
     {
-        $userId = $request->input('user_id');
-        $isUpdating = $request->has('user_id') && !empty($userId) && $userId != 0;
-
-        $rules = [
-            'userFullname' => ['required', 'string', 'max:255', 'regex:/^[a-zA-Z\s\-]+$/'],
-            'userEmail'    => ['required', 'email', $isUpdating ? 'unique:users,email,' . $userId : 'unique:users,email'],
-            'userContact'  => ['required', 'string', 'max:10', $isUpdating ? 'unique:users,contact_no,' . $userId : 'unique:users,contact_no'],
-            'companyName'  => ['nullable', 'string', 'max:150'],
-            'country'      => ['nullable', 'string', 'max:100'],
-            'user-role'    => ['nullable', 'string', 'max:50'],
-            'user-plan'    => ['nullable', 'string', 'max:50'],
-        ];
-
-        $validator = Validator::make($request->all(), $rules);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status'  => 0,
-                'message' => 'Validation error occurred.',
-                'errors'  => $validator->errors()
-            ], 422);
-        }
-
-        DB::beginTransaction();
         try {
-            $roleInput = $request->input('user-role');
+            $validated = $request->validated();
+            $userId = $request->input('user_id');
 
-            $data = [
-                'name'         => $request->input('userFullname'),
-                'email'        => $request->input('userEmail'),
-                'contact_no'   => $request->input('userContact'),
-                'company_name' => $request->input('companyName'),
-                'country'      => $request->input('country'),
-                'plan'         => $request->input('user-plan'),
-            ];
+            $result = $userService->storeOrUpdateUser($validated, $userId);
 
-            if ($isUpdating) {
-                $user = User::find($userId);
-                if (!$user) {
-                    DB::rollBack();
-                    return response()->json(['status' => 0, 'message' => 'Target user footprint not found.'], 442);
-                }
-
-                $user->update($data);
-
-                if (!empty($roleInput)) {
-                    $user->syncRoles([strtolower($roleInput)]);
-                }
-
-                DB::commit();
-                $this->clearUserCache($userId);
-
-                return response()->json(['status' => 1, 'message' => 'Record Details Updated Successfully']);
-            } else {
-                $data['password'] = bcrypt('Smart@#123');
-                $newUser = User::create($data);
-
-                if (!empty($roleInput)) {
-                    $newUser->syncRoles([strtolower($roleInput)]);
-                }
-
-                DB::commit();
-                $this->clearUserCache();
-
-                return response()->json(['status' => 1, 'message' => 'Record Details Added Successfully']);
+            if (!$result) {
+                return response()->json(['status' => 0, 'message' => 'Target user footprint not found.'], 442);
             }
+
+            $message = !empty($userId) && $userId != 0 ? 'Record Details Updated Successfully' : 'Record Details Added Successfully';
+            return response()->json(['status' => 1, 'message' => $message]);
         } catch (\Exception $e) {
-            DB::rollBack();
             \Log::error('Error tracking inside creation/update pipeline: ' . $e->getMessage());
             return response()->json(['status' => 0, 'message' => 'Critical database layer transaction exception.'], 500);
         }
@@ -146,7 +93,7 @@ class UserController extends Controller
         ];
 
         // Base query setup (Searchable columns select me daal diye taaki crash na ho)
-        $query = User::query()->select([
+        $query = User::with('roles')->select([
             'id',
             'name',
             'email',
@@ -258,7 +205,7 @@ class UserController extends Controller
         if ($request->has('id') && !empty($request->input('id'))) {
             try {
                 $id = base64_decode($request->input('id'), true);
-                if (!$id) {
+                if (!$id || !is_numeric($id)) {
                     throw new \InvalidArgumentException("Invalid payload encryption signature.");
                 }
 
@@ -286,6 +233,9 @@ class UserController extends Controller
     {
         try {
             $id = base64_decode($request->input('id'), true);
+            if (!$id || !is_numeric($id)) {
+                return response()->json(['status' => 0, 'message' => 'Invalid Request ID format.'], 400);
+            }
 
             $user = User::findOrFail($id);
 
