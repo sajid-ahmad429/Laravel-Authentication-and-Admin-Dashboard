@@ -1,9 +1,9 @@
 <!-- Menu -->
 @php
-    $role = session('role') ?? (auth()->check() ? auth()->user()->roles->first()?->name : 'superadmin');
-    $redirectAction = !empty($role) ? $role : 'superadmin';
-    $activeMenu = $activeMenu ?? '';
     $user = auth()->user();
+    $role = session('role') ?? ($user ? $user->roles->first()?->name : 'superadmin');
+    $redirectAction = !empty($role) ? strtolower($role) : 'superadmin';
+    $activeMenu = $activeMenu ?? '';
 @endphp
 <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
     <div class="app-brand demo">
@@ -72,7 +72,7 @@
         </li>
 
         <!-- Users Management -->
-        @if(!$user || $user->hasAnyRole(['superadmin', 'admin', 'editor']) || $user->can('view users'))
+        @if($user && ($user->hasAnyRole(['superadmin', 'admin', 'editor']) || $user->can('view users')))
         <li class="menu-item {{ in_array($activeMenu, ['users', 'users_list']) ? 'active open' : '' }}">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons mdi mdi-account-group-outline"></i>
@@ -89,7 +89,7 @@
         @endif
 
         <!-- Access Control (Roles & Permissions) -->
-        @if(!$user || $user->hasAnyRole(['superadmin', 'admin']) || $user->can('manage roles'))
+        @if($user && ($user->hasAnyRole(['superadmin', 'admin']) || $user->can('manage roles')))
         <li class="menu-item {{ in_array($activeMenu, ['roles', 'permissions']) ? 'active open' : '' }}">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons mdi mdi-shield-account-outline"></i>
@@ -111,7 +111,7 @@
         @endif
 
         <!-- Activity Logs -->
-        @if(!$user || $user->hasAnyRole(['superadmin', 'admin']))
+        @if($user && $user->hasAnyRole(['superadmin', 'admin']))
         <li class="menu-item {{ $activeMenu === 'activity_logs' ? 'active' : '' }}">
             <a href="{{ url($redirectAction . '/activity-logs') }}" class="menu-link">
                 <i class="menu-icon tf-icons mdi mdi-history"></i>

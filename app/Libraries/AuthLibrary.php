@@ -23,6 +23,7 @@ use Config\Auth;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Cookie;
+use Illuminate\Support\Facades\Auth as LaravelAuth;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Config;
@@ -514,6 +515,9 @@ class AuthLibrary
         // Store session data
         session($data);
 
+        // Ensure Laravel's built-in Auth knows about the user
+        LaravelAuth::login($user);
+
         // Log login details
         $this->loginlog();
 
@@ -749,6 +753,8 @@ class AuthLibrary
         $this->AuthModel->DeleteTokenByUserId($this->session->get('id'));
         //DESTROY SESSION
         Session::flush();
+        // LOGOUT FROM LARAVEL
+        LaravelAuth::logout();
         return;
     }
 

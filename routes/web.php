@@ -25,7 +25,7 @@ use App\Mail\ResetPasswordMail;
 Route::controller(AuthController::class)->group(function () {
     Route::get('/', 'index')->name('home');
     Route::get('sysLogin', 'index')->name('sys.login');
-    Route::match(['get', 'post'], 'sysCtrlLogin', 'login')->name('login');
+    Route::match(['get', 'post'], 'sysCtrlLogin', 'login')->name('login')->middleware('throttle:login');
     Route::match(['get', 'post'], 'register', 'register')->name('register');
     Route::match(['get', 'post'], 'forgotpassword', 'forgotpassword')->name('forgotpassword');
     Route::get('/resetpassword/{id}/{token}', 'resetPassword')->name('password.reset');
