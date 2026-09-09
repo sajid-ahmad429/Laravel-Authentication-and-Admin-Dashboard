@@ -481,7 +481,7 @@
 
                         return (
                             '<div class="d-inline-block text-nowrap">' +
-                            '<button class="btn btn-sm btn-icon btn-text-secondary rounded-pill dropdown-toggle hide-arrow" data-bs-toggle="dropdown">' +
+                            '<button class="btn btn-sm btn-icon btn-text-secondary rounded-pill dropdown-toggle hide-arrow" data-bs-toggle="dropdown" aria-label="User actions">' +
                             '<i class="mdi mdi-dots-vertical mdi-20px"></i></button>' +
                             '<div class="dropdown-menu dropdown-menu-end m-0">' +
                             '<a href="javascript:;" class="dropdown-item edit-user-btn" data-id="' +
