@@ -18,12 +18,19 @@ class ActivityLogController extends Controller
 
     public function getLogsData(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'draw'           => ['nullable', 'integer'],
+            'start'          => ['nullable', 'integer', 'min:0'],
+            'length'         => ['nullable', 'integer', 'min:1'],
+            'search.value'   => ['nullable', 'string', 'max:255'],
+        ]);
+
         $query = ActivityLog::query();
 
         $recordsTotal = ActivityLog::count();
 
-        if ($request->has('search') && !empty($request->input('search.value'))) {
-            $search = $request->input('search.value');
+        if (!empty($validated['search']['value'])) {
+            $search = $validated['search']['value'];
             $query->where(function ($q) use ($search) {
                 $q->where('user_name', 'LIKE', "%{$search}%")
                   ->orWhere('log_text', 'LIKE', "%{$search}%")
@@ -34,8 +41,8 @@ class ActivityLogController extends Controller
 
         $recordsFiltered = $query->count();
 
-        $start = (int) $request->input('start', 0);
-        $length = (int) $request->input('length', 10);
+        $start = $validated['start'] ?? 0;
+        $length = $validated['length'] ?? 10;
 
         $logs = $query->orderBy('id', 'desc')->skip($start)->take($length)->get();
 

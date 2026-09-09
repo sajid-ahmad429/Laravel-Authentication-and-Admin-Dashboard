@@ -23,6 +23,10 @@ class CommonController extends Controller
         $status = $request->input('status');
         $tableName = base64_decode($request->input('name'));
 
+        if (!$id || !is_numeric($id)) {
+            return response()->json(['success' => '0', 'message' => 'Invalid ID format.'], 400);
+        }
+
         // Whitelist allowed tables to prevent arbitrary table manipulation
         $allowedTables = ['users', 'roles', 'permissions', 'activitymaster'];
         if (!in_array($tableName, $allowedTables)) {

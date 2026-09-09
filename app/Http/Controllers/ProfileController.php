@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
+use App\Http\Requests\UpdateProfileRequest;
 
 class ProfileController extends Controller
 {
@@ -19,19 +20,10 @@ class ProfileController extends Controller
         return view('admin.profile.index', compact('user', 'activeMenu'));
     }
 
-    public function update(Request $request, ImageService $imageService): RedirectResponse
+    public function update(UpdateProfileRequest $request, ImageService $imageService): RedirectResponse
     {
         $userId = session('id') ?? Auth::id();
         $user = User::findOrFail($userId);
-
-        $request->validate([
-            'name'       => ['required', 'string', 'max:255'],
-            'contact_no' => ['nullable', 'string', 'max:15'],
-            'company'    => ['nullable', 'string', 'max:150'],
-            'country'    => ['nullable', 'string', 'max:100'],
-            'avatar'     => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp', 'max:2048'],
-            'password'   => ['nullable', 'string', 'min:8', 'confirmed'],
-        ]);
 
         $user->name = $request->input('name');
         $user->contact_no = $request->input('contact_no');
