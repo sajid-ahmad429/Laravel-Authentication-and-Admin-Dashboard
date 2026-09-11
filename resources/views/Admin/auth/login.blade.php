@@ -200,7 +200,7 @@
                         aria-describedby="password" />
                       <label for="password">Password</label>
                     </div>
-                    <span class="input-group-text cursor-pointer"><i class="mdi mdi-eye-off-outline"></i></span>
+                    <span class="input-group-text cursor-pointer" role="button" tabindex="0" aria-label="Toggle password visibility" aria-pressed="false"><i class="mdi mdi-eye-off-outline"></i></span>
                   </div>
                    <!-- Error for password field -->
                    @error('password')
@@ -284,6 +284,22 @@
     <script src="../../assets/js/pages-auth.js"></script>
 
     <script>
+    document.querySelectorAll('.form-password-toggle .input-group-text').forEach(function(toggleEl) {
+        toggleEl.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleEl.click();
+            }
+        });
+        toggleEl.addEventListener('click', function() {
+            var input = toggleEl.parentElement.querySelector('input');
+            if (input) {
+                var isPassword = input.getAttribute('type') === 'password';
+                toggleEl.setAttribute('aria-pressed', isPassword ? 'true' : 'false');
+            }
+        });
+    });
+
     document.querySelector('button[type="submit"]').addEventListener('click', function() {
         // Hide or remove error messages on submit button click
         var emailError = document.getElementById('email-error');
