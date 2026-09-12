@@ -237,19 +237,19 @@
             </div>
 
             <div class="d-flex justify-content-center gap-2">
-              <a href="javascript:;" class="btn btn-icon btn-lg rounded-pill btn-text-facebook">
+              <a href="javascript:;" class="btn btn-icon btn-lg rounded-pill btn-text-facebook" aria-label="Sign up with Facebook">
                 <i class="tf-icons mdi mdi-24px mdi-facebook"></i>
               </a>
 
-              <a href="javascript:;" class="btn btn-icon btn-lg rounded-pill btn-text-twitter">
+              <a href="javascript:;" class="btn btn-icon btn-lg rounded-pill btn-text-twitter" aria-label="Sign up with Twitter">
                 <i class="tf-icons mdi mdi-24px mdi-twitter"></i>
               </a>
 
-              <a href="javascript:;" class="btn btn-icon btn-lg rounded-pill btn-text-github">
+              <a href="javascript:;" class="btn btn-icon btn-lg rounded-pill btn-text-github" aria-label="Sign up with GitHub">
                 <i class="tf-icons mdi mdi-24px mdi-github"></i>
               </a>
 
-              <a href="javascript:;" class="btn btn-icon btn-lg rounded-pill btn-text-google-plus">
+              <a href="javascript:;" class="btn btn-icon btn-lg rounded-pill btn-text-google-plus" aria-label="Sign up with Google">
                 <i class="tf-icons mdi mdi-24px mdi-google"></i>
               </a>
             </div>
