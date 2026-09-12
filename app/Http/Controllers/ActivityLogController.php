@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\ActivityLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\View\View;
+use Illuminate\Support\Facades\Cache;
 
 class ActivityLogController extends Controller
 {
@@ -27,7 +28,10 @@ class ActivityLogController extends Controller
 
         $query = ActivityLog::query();
 
-        $recordsTotal = ActivityLog::count();
+        // High-volume performance optimization: Cache total records count for 2 minutes to prevent heavy COUNT(*) queries on DataTables AJAX polling
+        $recordsTotal = Cache::remember('activity_logs_total_count', 120, function () {
+            return ActivityLog::count();
+        });
 
         if (!empty($validated['search']['value'])) {
             $search = $validated['search']['value'];
@@ -37,9 +41,10 @@ class ActivityLogController extends Controller
                   ->orWhere('table_name', 'LIKE', "%{$search}%")
                   ->orWhere('action_type', 'LIKE', "%{$search}%");
             });
+            $recordsFiltered = $query->count();
+        } else {
+            $recordsFiltered = $recordsTotal;
         }
-
-        $recordsFiltered = $query->count();
 
         $start = $validated['start'] ?? 0;
         $length = $validated['length'] ?? 10;

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 
 class ActivityLog extends Model
 {
@@ -63,6 +64,10 @@ class ActivityLog extends Model
     public static function record(array $data)
     {
         $currentUser = Auth::user();
+
+        // Invalidate cached counts when a new activity log is recorded
+        Cache::forget('activity_logs_total_count');
+        Cache::forget('analytics_summary_metrics');
 
         return self::create([
             'user_id'          => $data['user_id'] ?? Auth::id(),
