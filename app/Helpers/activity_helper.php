@@ -148,6 +148,9 @@ if (!function_exists('clear_activity_cache')) {
      */
     function clear_activity_cache($user_id = null)
     {
+        Cache::forget('activity_logs_total_count');
+        Cache::forget('analytics_summary_metrics');
+
         if ($user_id) {
             Cache::forget("user_activity_count_{$user_id}_");
         } else {
